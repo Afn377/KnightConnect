@@ -35,8 +35,9 @@ This document defines the proposed minimum fields and functionality for students
 - Which fields should be included in the first version?
 
 ## Next Steps
-- Compare these requirements with the existing Figma wireframes.
-- Discuss the proposed fields with teammates.
-- Update the document based on feedback.
+- I should :
+-  Compare it to requirements with the existing Figma wireframes.
+-  Discuss the proposed fields with teammates.
+-  Update the document based on feedback.
 
 **Status:** Draft — Pending Team Review.
