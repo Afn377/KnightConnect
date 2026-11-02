@@ -178,6 +178,11 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
+    "DEFAULT_THROTTLE_RATES": {
+        # Login code requests, per client (user or IP) and per target email.
+        "login_code": os.environ.get("THROTTLE_LOGIN_CODE", "20/hour"),
+        "login_code_email": os.environ.get("THROTTLE_LOGIN_CODE_EMAIL", "5/hour"),
+    },
 }
 
 
@@ -196,3 +201,7 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "KnightConnect <no-rep
 ALLOWED_EMAIL_DOMAINS = env_list(
     "ALLOWED_EMAIL_DOMAINS", "rutgers.edu,scarletmail.rutgers.edu"
 )
+
+LOGIN_CODE_LENGTH = 6
+LOGIN_CODE_TTL_MINUTES = int(os.environ.get("LOGIN_CODE_TTL_MINUTES", "10"))
+LOGIN_CODE_MAX_ATTEMPTS = int(os.environ.get("LOGIN_CODE_MAX_ATTEMPTS", "5"))

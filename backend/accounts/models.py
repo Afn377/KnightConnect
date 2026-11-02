@@ -122,3 +122,24 @@ class ContactMethod(TimeStampedModel):
 
     def __str__(self):
         return f"{self.get_kind_display()}: {self.value}"
+
+
+class LoginCode(models.Model):
+    """A one-time sign-in code emailed to a Rutgers address.
+
+    Only an HMAC of the code is stored. Requesting a new code replaces any
+    outstanding one for the same email.
+    """
+
+    email = models.EmailField(db_index=True)
+    code_hash = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+    consumed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Login code for {self.email}"

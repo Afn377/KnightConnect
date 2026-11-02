@@ -5,7 +5,7 @@ from django.core import mail
 from django.test import override_settings
 
 from accounts.models import LoginCode
-from core.testing import APITestCase
+from core.testing import APITestCase, make_user
 
 
 def throttle_rates(**rates):
@@ -77,8 +77,6 @@ class RequestCodeTests(APITestCase):
         self.assertEqual(LoginCode.objects.filter(email="netid@rutgers.edu").count(), 1)
 
     def test_response_does_not_reveal_whether_account_exists(self):
-        from core.testing import make_user
-
         make_user("existing@rutgers.edu")
         existing = self.client.post(self.url, {"email": "existing@rutgers.edu"}, format="json")
         new = self.client.post(self.url, {"email": "new@rutgers.edu"}, format="json")
