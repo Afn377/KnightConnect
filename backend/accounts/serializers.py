@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import serializers
 
 from catalog.models import Interest, Role, Skill
@@ -59,3 +60,18 @@ class MeSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["id", "email", "is_profile_complete", "created_at"]
+
+    def validate_skills(self, skills):
+        slugs = [entry["skill"].slug for entry in skills]
+        if len(slugs) != len(set(slugs)):
+            raise serializers.ValidationError("Each skill can only be listed once.")
+        return skills
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        skills = validated_data.pop("user_skills", None)
+        instance = super().update(instance, validated_data)
+        if skills is not None:
+            instance.user_skills.all().delete()
+            UserSkill.objects.bulk_create(UserSkill(user=instance, **entry) for entry in skills)
+        return instance
