@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     "opportunities",
     "connections",
     "matching",
+    "safety",
 ]
 
 MIDDLEWARE = [
