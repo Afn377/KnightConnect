@@ -260,3 +260,122 @@ class RequestDetailTests(RequestFixtures, APITestCase):
 
     def test_requires_authentication(self):
         self.assertEqual(self.get().status_code, 401)
+
+
+class AcceptRequestTests(RequestFixtures, APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.make_world()
+        self.designer = OpportunityRole.objects.create(
+            opportunity=self.opportunity, role=Role.objects.create(name="Designer"), slots=1
+        )
+        self.request_ = self.make_request(opportunity_role=self.backend)
+
+    def accept(self, request=None):
+        return self.client.post(f"/api/requests/{(request or self.request_).id}/accept/")
+
+    def test_recipient_accepts(self):
+        from accounts.models import ContactMethod
+
+        ContactMethod.objects.create(user=self.student, kind="discord", value="student#1")
+        self.login(self.owner)
+
+        response = self.accept()
+
+        self.assertEqual(response.status_code, 200)
+        self.request_.refresh_from_db()
+        self.assertEqual(self.request_.status, "accepted")
+        self.assertIsNotNone(self.request_.responded_at)
+        self.assertEqual(response.json()["contact_methods"], [{"kind": "discord", "value": "student#1"}])
+
+    def test_student_accepts_invite(self):
+        invite = self.make_request(kind="invite", sender=self.owner, recipient=make_user(), opportunity_role=self.designer)
+        self.login(invite.recipient)
+
+        self.assertEqual(self.accept(invite).status_code, 200)
+
+    def test_records_funnel_event(self):
+        self.login(self.owner)
+
+        self.accept()
+
+        event = FunnelEvent.objects.get(event_type="request_accepted")
+        self.assertEqual(event.user, self.owner)
+        self.assertEqual(event.connection_request, self.request_)
+
+    def test_emails_both_participants_with_each_others_contact_details(self):
+        from django.core import mail
+
+        from accounts.models import ContactMethod
+
+        ContactMethod.objects.create(user=self.owner, kind="discord", value="owner#1")
+        ContactMethod.objects.create(user=self.student, kind="linkedin", value="linkedin.com/in/student")
+        self.login(self.owner)
+
+        self.accept()
+
+        self.assertEqual(len(mail.outbox), 2)
+        by_recipient = {message.to[0]: message for message in mail.outbox}
+        to_student = by_recipient[self.student.email]
+        to_owner = by_recipient[self.owner.email]
+        self.assertIn(self.opportunity.title, to_student.subject + to_student.body)
+        self.assertIn("owner#1", to_student.body)
+        self.assertIn("Owner", to_student.body)
+        self.assertIn("linkedin.com/in/student", to_owner.body)
+        self.assertIn("Student", to_owner.body)
+        self.assertNotIn("owner#1", to_owner.body)
+
+    def test_closes_opportunity_when_every_role_is_filled(self):
+        other_pending = self.make_request(sender=make_user())
+        self.make_request(sender=make_user(), opportunity_role=self.designer, status="accepted")
+        self.login(self.owner)
+
+        self.accept()
+
+        self.opportunity.refresh_from_db()
+        other_pending.refresh_from_db()
+        self.assertEqual(self.opportunity.status, "closed")
+        self.assertEqual(self.opportunity.close_reason, "filled")
+        self.assertEqual(other_pending.status, "expired")
+
+    def test_keeps_opportunity_open_while_roles_remain(self):
+        self.login(self.owner)
+
+        self.accept()
+
+        self.opportunity.refresh_from_db()
+        self.assertEqual(self.opportunity.status, "open")
+
+    def test_sender_cannot_accept(self):
+        self.login(self.student)
+
+        self.assertEqual(self.accept().status_code, 403)
+
+    def test_outsider_gets_404(self):
+        self.login(make_user())
+
+        self.assertEqual(self.accept().status_code, 404)
+
+    def test_only_pending_requests_can_be_accepted(self):
+        self.request_.status = "cancelled"
+        self.request_.save()
+        self.login(self.owner)
+
+        self.assertEqual(self.accept().status_code, 409)
+
+    def test_cannot_accept_for_inactive_opportunity(self):
+        Opportunity.objects.filter(pk=self.opportunity.pk).update(expires_at=timezone.now() - timedelta(minutes=1))
+        self.login(self.owner)
+
+        self.assertEqual(self.accept().status_code, 409)
+        self.request_.refresh_from_db()
+        self.assertEqual(self.request_.status, "pending")
+
+    def test_cannot_accept_into_full_role(self):
+        self.make_request(sender=make_user(), opportunity_role=self.backend, status="accepted")
+        self.login(self.owner)
+
+        self.assertEqual(self.accept().status_code, 409)
+
+    def test_requires_authentication(self):
+        self.assertEqual(self.accept().status_code, 401)
