@@ -1,10 +1,12 @@
 import re
+from datetime import timedelta
 
 from django.conf import settings
 from django.core import mail
 from django.test import override_settings
+from django.utils import timezone
 
-from accounts.models import LoginCode
+from accounts.models import LoginCode, User
 from core.testing import APITestCase, make_user
 
 
@@ -104,3 +106,105 @@ class RequestCodeTests(APITestCase):
         response = self.client.post(self.url, {"email": "c@rutgers.edu"}, format="json")
 
         self.assertEqual(response.status_code, 429)
+
+
+class VerifyCodeTests(APITestCase):
+    url = "/api/auth/verify-code/"
+
+    def request_code(self, email="netid@rutgers.edu"):
+        self.client.post("/api/auth/request-code/", {"email": email}, format="json")
+        return code_from_last_email()
+
+    def verify(self, code, email="netid@rutgers.edu"):
+        return self.client.post(self.url, {"email": email, "code": code}, format="json")
+
+    def wrong(self, code):
+        return "000000" if code != "000000" else "111111"
+
+    def test_correct_code_creates_account_and_signs_in(self):
+        code = self.request_code()
+
+        response = self.verify(code)
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["created"])
+        self.assertEqual(body["user"]["email"], "netid@rutgers.edu")
+        user = User.objects.get(email="netid@rutgers.edu")
+        self.assertEqual(body["user"]["id"], str(user.id))
+        self.assertEqual(self.client.session["_auth_user_id"], str(user.pk))
+
+    def test_existing_user_signs_in_without_creating_account(self):
+        user = make_user("netid@rutgers.edu")
+        code = self.request_code()
+
+        response = self.verify(code)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["created"])
+        self.assertEqual(User.objects.count(), 1)
+        self.assertEqual(self.client.session["_auth_user_id"], str(user.pk))
+
+    def test_email_is_matched_case_insensitively(self):
+        code = self.request_code("netid@rutgers.edu")
+
+        self.assertEqual(self.verify(code, email="NetID@Rutgers.edu").status_code, 200)
+
+    def test_wrong_code_is_rejected_and_counted(self):
+        code = self.request_code()
+
+        response = self.verify(self.wrong(code))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertEqual(LoginCode.objects.get().attempts, 1)
+        self.assertEqual(self.verify(code).status_code, 200)
+
+    def test_code_cannot_be_reused(self):
+        code = self.request_code()
+        self.verify(code)
+        self.client.logout()
+
+        self.assertEqual(self.verify(code).status_code, 400)
+
+    def test_expired_code_is_rejected(self):
+        code = self.request_code()
+        LoginCode.objects.update(expires_at=timezone.now() - timedelta(seconds=1))
+
+        self.assertEqual(self.verify(code).status_code, 400)
+
+    @override_settings(LOGIN_CODE_MAX_ATTEMPTS=3)
+    def test_code_is_locked_after_too_many_attempts(self):
+        code = self.request_code()
+        for _ in range(3):
+            self.verify(self.wrong(code))
+
+        self.assertEqual(self.verify(code).status_code, 400)
+
+    def test_code_for_another_email_is_rejected(self):
+        code = self.request_code("first@rutgers.edu")
+        self.request_code("second@rutgers.edu")
+
+        self.assertEqual(self.verify(code, email="second@rutgers.edu").status_code, 400) if code != code_from_last_email() else None
+
+    def test_rejects_when_no_code_was_requested(self):
+        self.assertEqual(self.verify("123456").status_code, 400)
+
+    def test_requires_email_and_code(self):
+        self.assertEqual(self.client.post(self.url, {}, format="json").status_code, 400)
+
+    def test_disabled_account_cannot_sign_in(self):
+        make_user("netid@rutgers.edu", is_active=False)
+        code = self.request_code()
+
+        response = self.verify(code)
+
+        self.assertEqual(response.status_code, 403)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    @throttle_rates(login_verify="2/hour")
+    def test_rate_limited(self):
+        self.verify("111111")
+        self.verify("111111")
+
+        self.assertEqual(self.verify("111111").status_code, 429)
