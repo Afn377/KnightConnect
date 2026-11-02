@@ -130,3 +130,26 @@ class ContactMethodSerializer(serializers.ModelSerializer):
         if validated_data.get("is_preferred"):
             self._clear_other_preferences(instance.user, keep=instance)
         return super().update(instance, validated_data)
+
+
+class PublicProfileSerializer(serializers.ModelSerializer):
+    """What other students can see. Never includes email or contact methods."""
+
+    preferred_roles = CatalogSlugField(many=True, read_only=True)
+    interests = CatalogSlugField(many=True, read_only=True)
+    skills = UserSkillSerializer(source="user_skills", many=True, read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "display_name",
+            "bio",
+            "open_to_requests",
+            "availability",
+            "commitment",
+            "preferred_roles",
+            "interests",
+            "skills",
+        ]
+        read_only_fields = fields

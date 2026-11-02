@@ -14,7 +14,14 @@ from core.throttles import EmailRateThrottle, ScopedRateThrottle
 from .deletion import restore_account, schedule_account_deletion
 from .login_codes import InvalidLoginCode, issue_login_code, verify_login_code
 from .models import ContactMethod, User
-from .serializers import ContactMethodSerializer, MeSerializer, RequestCodeSerializer, SessionUserSerializer, VerifyCodeSerializer
+from .serializers import (
+    ContactMethodSerializer,
+    MeSerializer,
+    PublicProfileSerializer,
+    RequestCodeSerializer,
+    SessionUserSerializer,
+    VerifyCodeSerializer,
+)
 
 
 @require_GET
@@ -126,3 +133,14 @@ class ContactMethodDetailView(generics.UpdateAPIView, generics.DestroyAPIView):
 
     def get_queryset(self):
         return ContactMethod.objects.filter(user=self.request.user)
+
+
+class PublicProfileView(generics.RetrieveAPIView):
+    """Another student's public profile. Blocked, disabled, and deleting accounts return 404."""
+
+    serializer_class = PublicProfileSerializer
+
+    def get_queryset(self):
+        return User.objects.visible_to(self.request.user).prefetch_related(
+            "preferred_roles", "interests", "user_skills__skill"
+        )

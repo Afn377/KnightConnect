@@ -14,4 +14,5 @@ urlpatterns = [
         views.ContactMethodDetailView.as_view(),
         name="contact-method-detail",
     ),
+    path("users/<uuid:pk>/", views.PublicProfileView.as_view(), name="user-detail"),
 ]
