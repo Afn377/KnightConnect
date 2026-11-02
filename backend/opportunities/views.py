@@ -1,12 +1,15 @@
 from django.db.models import Q
 from rest_framework import generics
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.response import Response
 
 from analytics.models import FunnelEvent
 from core.exceptions import Conflict
 
+from .models import Opportunity
 from .queries import browsable_by, viewable_by, with_details
 from .serializers import OpportunitySerializer
+from .services import close_opportunity
 
 
 class OpportunityListView(generics.ListCreateAPIView):
@@ -63,3 +66,23 @@ class OpportunityDetailView(generics.RetrieveUpdateAPIView):
         if not opportunity.is_active:
             raise Conflict("Closed or expired opportunities can't be edited.")
         return super().update(request, *args, **kwargs)
+
+
+class OpportunityCloseView(generics.GenericAPIView):
+    """Let the owner stop recruiting before the opportunity expires."""
+
+    serializer_class = OpportunitySerializer
+
+    def get_queryset(self):
+        return viewable_by(self.request.user)
+
+    def post(self, request, *args, **kwargs):
+        opportunity = self.get_object()
+        if opportunity.owner_id != request.user.id:
+            raise PermissionDenied("Only the owner can close this opportunity.")
+        if opportunity.status != Opportunity.Status.OPEN:
+            raise Conflict("This opportunity is already closed.")
+
+        close_opportunity(opportunity, Opportunity.CloseReason.OWNER_CLOSED, actor=request.user)
+        opportunity = with_details(Opportunity.objects.filter(pk=opportunity.pk)).get()
+        return Response(self.get_serializer(opportunity).data)
