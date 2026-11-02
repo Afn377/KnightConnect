@@ -3,7 +3,7 @@ from rest_framework import generics
 
 from analytics.models import FunnelEvent
 
-from .queries import browsable_by, with_details
+from .queries import browsable_by, viewable_by, with_details
 from .serializers import OpportunitySerializer
 
 
@@ -43,3 +43,10 @@ class OpportunityListView(generics.ListCreateAPIView):
         FunnelEvent.record(
             FunnelEvent.Type.OPPORTUNITY_CREATED, user=self.request.user, opportunity=opportunity
         )
+
+
+class OpportunityDetailView(generics.RetrieveAPIView):
+    serializer_class = OpportunitySerializer
+
+    def get_queryset(self):
+        return with_details(viewable_by(self.request.user))
