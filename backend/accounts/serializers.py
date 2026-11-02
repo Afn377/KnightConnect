@@ -4,7 +4,7 @@ from rest_framework import serializers
 from catalog.models import Interest, Role, Skill
 from catalog.serializers import CatalogSlugField
 
-from .models import User, UserSkill
+from .models import ContactMethod, User, UserSkill
 from .validators import validate_rutgers_email
 
 
@@ -75,3 +75,9 @@ class MeSerializer(serializers.ModelSerializer):
             instance.user_skills.all().delete()
             UserSkill.objects.bulk_create(UserSkill(user=instance, **entry) for entry in skills)
         return instance
+
+
+class ContactMethodSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContactMethod
+        fields = ["id", "kind", "value", "is_preferred"]

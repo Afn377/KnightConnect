@@ -13,8 +13,8 @@ from core.throttles import EmailRateThrottle, ScopedRateThrottle
 
 from .deletion import restore_account, schedule_account_deletion
 from .login_codes import InvalidLoginCode, issue_login_code, verify_login_code
-from .models import User
-from .serializers import MeSerializer, RequestCodeSerializer, SessionUserSerializer, VerifyCodeSerializer
+from .models import ContactMethod, User
+from .serializers import ContactMethodSerializer, MeSerializer, RequestCodeSerializer, SessionUserSerializer, VerifyCodeSerializer
 
 
 @require_GET
@@ -108,3 +108,13 @@ class MeView(generics.RetrieveUpdateAPIView):
             },
             status=status.HTTP_202_ACCEPTED,
         )
+
+
+class ContactMethodListView(generics.ListAPIView):
+    """The signed-in user's contact methods, revealed to others only after an accepted connection."""
+
+    serializer_class = ContactMethodSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        return ContactMethod.objects.filter(user=self.request.user)
