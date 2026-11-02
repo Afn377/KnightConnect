@@ -1,9 +1,9 @@
 from rest_framework import generics, status
 from rest_framework.response import Response
 
-from .models import Block
 from core.throttles import ScopedRateThrottle
 
+from .models import Block
 from .serializers import BlockCreateSerializer, BlockSerializer, ReportSerializer
 from .services import block_user
 
