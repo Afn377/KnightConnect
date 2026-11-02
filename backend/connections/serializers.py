@@ -7,7 +7,7 @@ from opportunities.queries import browsable_by
 from opportunities.serializers import OwnerSerializer
 
 from .contact import shared_contact_methods
-from .models import ConnectionRequest
+from .models import ConnectionFeedback, ConnectionRequest
 
 
 class RequestOpportunitySerializer(serializers.ModelSerializer):
@@ -29,6 +29,7 @@ class ConnectionRequestSerializer(serializers.ModelSerializer):
     recipient = OwnerSerializer(read_only=True)
     direction = serializers.SerializerMethodField()
     contact_methods = serializers.SerializerMethodField()
+    my_feedback = serializers.SerializerMethodField()
 
     class Meta:
         model = ConnectionRequest
@@ -43,6 +44,7 @@ class ConnectionRequestSerializer(serializers.ModelSerializer):
             "recipient",
             "message",
             "contact_methods",
+            "my_feedback",
             "created_at",
             "responded_at",
         ]
@@ -59,6 +61,21 @@ class ConnectionRequestSerializer(serializers.ModelSerializer):
             return None
         other = obj.recipient if obj.sender_id == self._viewer().id else obj.sender
         return shared_contact_methods(other)
+
+
+    def get_my_feedback(self, obj):
+        feedback = next((item for item in obj.feedback.all() if item.user_id == self._viewer().id), None)
+        if feedback is None:
+            return None
+        return {"was_useful": feedback.was_useful, "comment": feedback.comment}
+
+
+class ConnectionFeedbackSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ConnectionFeedback
+        fields = ["was_useful", "comment", "created_at"]
+        read_only_fields = ["created_at"]
+        extra_kwargs = {"comment": {"required": False}}
 
 
 class SendRequestSerializer(serializers.Serializer):

@@ -6,14 +6,14 @@ from rest_framework.response import Response
 from core.throttles import ScopedRateThrottle
 
 from .models import ConnectionRequest
-from .serializers import ConnectionRequestSerializer, SendRequestSerializer
-from .services import accept_request, cancel_request, decline_request, send_request
+from .serializers import ConnectionFeedbackSerializer, ConnectionRequestSerializer, SendRequestSerializer
+from .services import accept_request, cancel_request, decline_request, rate_connection, send_request
 
 
 def requests_involving(user):
     return ConnectionRequest.objects.filter(Q(sender=user) | Q(recipient=user)).select_related(
         "opportunity", "opportunity_role__role", "sender", "recipient"
-    ).prefetch_related("sender__contact_methods", "recipient__contact_methods")
+    ).prefetch_related("sender__contact_methods", "recipient__contact_methods", "feedback")
 
 
 class ConnectionRequestListView(generics.ListAPIView):
@@ -100,3 +100,19 @@ class CancelRequestView(RespondToRequestView):
     def post(self, request, *args, **kwargs):
         connection_request = cancel_request(self.get_request_for_action(), actor=request.user)
         return self.respond(connection_request)
+
+
+class ConnectionFeedbackView(generics.GenericAPIView):
+    """Either participant rates whether an accepted connection helped (once each)."""
+
+    serializer_class = ConnectionFeedbackSerializer
+
+    def get_queryset(self):
+        return requests_involving(self.request.user)
+
+    def post(self, request, *args, **kwargs):
+        connection_request = self.get_object()
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        feedback = rate_connection(connection_request, user=request.user, **serializer.validated_data)
+        return Response(self.get_serializer(feedback).data, status=status.HTTP_201_CREATED)

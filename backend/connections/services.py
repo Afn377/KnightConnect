@@ -8,7 +8,7 @@ from opportunities.models import Opportunity
 from opportunities.services import close_opportunity
 
 from .emails import send_connection_accepted_emails
-from .models import ConnectionRequest
+from .models import ConnectionFeedback, ConnectionRequest
 
 
 def send_request(*, opportunity, sender, recipient, kind, opportunity_role=None, message=""):
@@ -126,3 +126,24 @@ def cancel_request(connection_request, *, actor):
         event_type=FunnelEvent.Type.REQUEST_CANCELLED,
         actor=actor,
     )
+
+
+def rate_connection(connection_request, *, user, was_useful, comment=""):
+    """Record one participant's verdict on whether an accepted connection helped."""
+    if connection_request.status != ConnectionRequest.Status.ACCEPTED:
+        raise Conflict("Only accepted connections can be rated.")
+    try:
+        with transaction.atomic():
+            feedback = ConnectionFeedback.objects.create(
+                connection_request=connection_request, user=user, was_useful=was_useful, comment=comment
+            )
+    except IntegrityError:
+        raise Conflict("You have already rated this connection.")
+    FunnelEvent.record(
+        FunnelEvent.Type.CONNECTION_RATED,
+        user=user,
+        opportunity=connection_request.opportunity,
+        connection_request=connection_request,
+        was_useful=was_useful,
+    )
+    return feedback
