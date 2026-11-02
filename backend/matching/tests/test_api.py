@@ -93,3 +93,47 @@ class OpportunityMatchesTests(MatchingApiFixtures, APITestCase):
 
     def test_requires_authentication(self):
         self.assertEqual(self.get().status_code, 401)
+
+
+class RecommendationsTests(MatchingApiFixtures, APITestCase):
+    url = "/api/recommendations/"
+
+    def setUp(self):
+        super().setUp()
+        self.make_world()
+        self.student = self.login(self.make_candidate(preferred_roles=[self.backend]))
+
+    def test_returns_ranked_opportunities_with_explanations(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(len(body["results"]), 1)
+        result = body["results"][0]
+        self.assertEqual(result["rank"], 1)
+        self.assertEqual(result["opportunity"]["id"], str(self.opportunity.id))
+        self.assertEqual(result["opportunity"]["roles"][0]["role"]["slug"], "backend-developer")
+        self.assertIn("Fits the Backend developer role", [factor["label"] for factor in result["explanations"]])
+        self.assertTrue(body["sparse"])
+
+    def test_persists_results_and_records_them_as_shown(self):
+        body = self.client.get(self.url).json()
+
+        result = MatchResult.objects.get()
+        self.assertEqual(result.direction, "opportunities")
+        self.assertEqual(result.candidate, self.student)
+        self.assertEqual(str(result.batch_id), body["batch_id"])
+        self.assertTrue(FunnelEvent.objects.filter(event_type="recommendation_shown", user=self.student, match_result=result).exists())
+
+    def test_empty_when_nothing_fits(self):
+        self.opportunity.close(Opportunity.CloseReason.OWNER_CLOSED)
+
+        body = self.client.get(self.url).json()
+
+        self.assertEqual(body["results"], [])
+        self.assertTrue(body["sparse"])
+
+    def test_requires_authentication(self):
+        self.client.logout()
+
+        self.assertEqual(self.client.get(self.url).status_code, 401)
