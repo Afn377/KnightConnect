@@ -3,7 +3,7 @@ from django.test import TestCase
 
 from accounts.models import User
 
-from .models import Block, Report
+from ..models import Block, Report
 
 
 class BlockTests(TestCase):

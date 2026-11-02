@@ -6,7 +6,7 @@ from django.utils import timezone
 from accounts.models import User
 from opportunities.models import Opportunity
 
-from .models import FunnelEvent
+from ..models import FunnelEvent
 
 
 class FunnelEventTests(TestCase):

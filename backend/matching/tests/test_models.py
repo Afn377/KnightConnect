@@ -8,7 +8,7 @@ from django.utils import timezone
 from accounts.models import User
 from opportunities.models import Opportunity
 
-from .models import MatchResult
+from ..models import MatchResult
 
 
 class MatchResultTests(TestCase):

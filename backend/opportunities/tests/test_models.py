@@ -8,7 +8,7 @@ from django.utils import timezone
 from accounts.models import User
 from catalog.models import Event, Role
 
-from .models import Opportunity, OpportunityRole
+from ..models import Opportunity, OpportunityRole
 
 
 def make_opportunity(owner, **overrides):
