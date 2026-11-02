@@ -314,3 +314,103 @@ class OpportunityDetailTests(OpportunityFixtures, APITestCase):
         self.client.logout()
 
         self.assertEqual(self.get().status_code, 401)
+
+
+class OpportunityUpdateTests(OpportunityFixtures, APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.make_catalog()
+        self.owner = self.login(make_user())
+        self.opportunity = make_opportunity(owner=self.owner, interests=[self.ai])
+        self.backend_role = OpportunityRole.objects.create(opportunity=self.opportunity, role=self.backend, slots=2)
+        OpportunitySkill.objects.create(opportunity=self.opportunity, skill=self.python)
+
+    def patch(self, data):
+        return self.client.patch(f"/api/opportunities/{self.opportunity.id}/", data, format="json")
+
+    def accept_for(self, role):
+        return ConnectionRequest.objects.create(
+            opportunity=self.opportunity, opportunity_role=role, kind="join", sender=make_user(), recipient=self.owner, status="accepted"
+        )
+
+    def test_owner_updates_details(self):
+        expires_at = timezone.now() + timedelta(days=5)
+
+        response = self.patch({"title": "New title", "description": "New description", "expires_at": expires_at.isoformat()})
+
+        self.assertEqual(response.status_code, 200)
+        self.opportunity.refresh_from_db()
+        self.assertEqual(self.opportunity.title, "New title")
+        self.assertEqual(self.opportunity.description, "New description")
+        self.assertEqual(self.opportunity.expires_at, expires_at)
+
+    def test_updates_existing_roles_and_adds_new_ones(self):
+        response = self.patch({"roles": [{"role": "backend-developer", "slots": 3}, {"role": "designer", "slots": 1}]})
+
+        self.assertEqual(response.status_code, 200)
+        self.backend_role.refresh_from_db()
+        self.assertEqual(self.backend_role.slots, 3)
+        self.assertEqual(sorted(self.opportunity.roles.values_list("role__slug", flat=True)), ["backend-developer", "designer"])
+
+    def test_removes_roles_left_out(self):
+        OpportunityRole.objects.create(opportunity=self.opportunity, role=self.designer)
+
+        response = self.patch({"roles": [{"role": "backend-developer", "slots": 2}]})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(self.opportunity.roles.values_list("role__slug", flat=True)), ["backend-developer"])
+
+    def test_keeps_accepted_requests_linked_to_their_role(self):
+        accepted = self.accept_for(self.backend_role)
+
+        self.patch({"roles": [{"role": "backend-developer", "slots": 3}]})
+
+        accepted.refresh_from_db()
+        self.assertEqual(accepted.opportunity_role, self.backend_role)
+
+    def test_cannot_reduce_slots_below_filled(self):
+        self.accept_for(self.backend_role)
+        self.accept_for(self.backend_role)
+
+        response = self.patch({"roles": [{"role": "backend-developer", "slots": 1}]})
+
+        self.assertEqual(response.status_code, 400)
+        self.backend_role.refresh_from_db()
+        self.assertEqual(self.backend_role.slots, 2)
+
+    def test_cannot_remove_role_with_accepted_members(self):
+        self.accept_for(self.backend_role)
+
+        response = self.patch({"roles": [{"role": "designer"}]})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(OpportunityRole.objects.filter(pk=self.backend_role.pk).exists())
+
+    def test_replaces_skills_and_interests(self):
+        response = self.patch({"skills": [{"skill": "figma", "requirement_type": "required"}], "interests": []})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(self.opportunity.opportunity_skills.values_list("skill__slug", "requirement_type")), [("figma", "required")])
+        self.assertFalse(self.opportunity.interests.exists())
+
+    def test_validation_still_applies(self):
+        response = self.patch({"expires_at": (timezone.now() + timedelta(days=45)).isoformat()})
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_non_owner_is_forbidden(self):
+        self.login(make_user())
+
+        self.assertEqual(self.patch({"title": "Hijacked"}).status_code, 403)
+        self.opportunity.refresh_from_db()
+        self.assertNotEqual(self.opportunity.title, "Hijacked")
+
+    def test_closed_opportunity_cannot_be_edited(self):
+        self.opportunity.close(Opportunity.CloseReason.OWNER_CLOSED)
+
+        self.assertEqual(self.patch({"title": "Too late"}).status_code, 409)
+
+    def test_requires_authentication(self):
+        self.client.logout()
+
+        self.assertEqual(self.patch({"title": "x"}).status_code, 401)
