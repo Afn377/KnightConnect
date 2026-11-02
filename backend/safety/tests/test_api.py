@@ -31,3 +31,56 @@ class BlockListTests(APITestCase):
         self.client.logout()
 
         self.assertEqual(self.client.get(self.url).status_code, 401)
+
+
+class BlockCreateTests(APITestCase):
+    url = "/api/blocks/"
+
+    def setUp(self):
+        super().setUp()
+        self.user = self.login(make_user())
+        self.other = make_user()
+
+    def block(self, user_id):
+        return self.client.post(self.url, {"user": str(user_id)}, format="json")
+
+    def test_blocks_user(self):
+        response = self.block(self.other.id)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(Block.objects.filter(blocker=self.user, blocked=self.other).exists())
+        self.assertEqual(response.json()["user"]["id"], str(self.other.id))
+
+    def test_blocking_twice_is_harmless(self):
+        self.block(self.other.id)
+
+        response = self.block(self.other.id)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Block.objects.count(), 1)
+
+    def test_cancels_pending_requests_between_the_two_users(self):
+        mine = make_opportunity(owner=self.user)
+        theirs = make_opportunity(owner=self.other)
+        incoming = ConnectionRequest.objects.create(opportunity=mine, kind="join", sender=self.other, recipient=self.user)
+        outgoing = ConnectionRequest.objects.create(opportunity=theirs, kind="join", sender=self.user, recipient=self.other)
+        unrelated = ConnectionRequest.objects.create(opportunity=mine, kind="join", sender=make_user(), recipient=self.user)
+
+        self.block(self.other.id)
+
+        for request in (incoming, outgoing, unrelated):
+            request.refresh_from_db()
+        self.assertEqual(incoming.status, "cancelled")
+        self.assertEqual(outgoing.status, "cancelled")
+        self.assertEqual(unrelated.status, "pending")
+
+    def test_cannot_block_self(self):
+        self.assertEqual(self.block(self.user.id).status_code, 400)
+
+    def test_unknown_user_is_rejected(self):
+        self.assertEqual(self.block(uuid.uuid4()).status_code, 400)
+
+    def test_requires_authentication(self):
+        self.client.logout()
+
+        self.assertEqual(self.block(self.other.id).status_code, 401)
