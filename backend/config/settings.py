@@ -211,3 +211,17 @@ LOGIN_CODE_MAX_ATTEMPTS = int(os.environ.get("LOGIN_CODE_MAX_ATTEMPTS", "5"))
 
 # Deleted accounts can be restored by signing in again within this window.
 ACCOUNT_DELETION_GRACE_DAYS = int(os.environ.get("ACCOUNT_DELETION_GRACE_DAYS", "3"))
+
+
+# Matching
+# Relative importance of each scoring factor. Factors that don't apply to a
+# pairing (e.g. an opportunity with no preferred skills) are left out and the
+# remaining weights are renormalized, so scores always fall between 0 and 1.
+MATCHING_WEIGHTS = {
+    "skills": 0.30,
+    "role": 0.25,
+    "availability": 0.20,
+    "interests": 0.15,
+    "commitment": 0.10,
+}
+MATCHING_RESULT_LIMIT = int(os.environ.get("MATCHING_RESULT_LIMIT", "20"))
