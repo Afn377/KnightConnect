@@ -418,3 +418,35 @@ class DeclineRequestTests(RequestFixtures, APITestCase):
         self.login(make_user())
 
         self.assertEqual(self.decline().status_code, 404)
+
+
+class CancelRequestTests(RequestFixtures, APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.make_world()
+        self.request_ = self.make_request()
+
+    def cancel(self):
+        return self.client.post(f"/api/requests/{self.request_.id}/cancel/")
+
+    def test_sender_cancels(self):
+        self.login(self.student)
+
+        response = self.cancel()
+
+        self.assertEqual(response.status_code, 200)
+        self.request_.refresh_from_db()
+        self.assertEqual(self.request_.status, "cancelled")
+        self.assertTrue(FunnelEvent.objects.filter(event_type="request_cancelled", connection_request=self.request_).exists())
+
+    def test_recipient_cannot_cancel(self):
+        self.login(self.owner)
+
+        self.assertEqual(self.cancel().status_code, 403)
+
+    def test_only_pending_requests_can_be_cancelled(self):
+        self.request_.status = "declined"
+        self.request_.save()
+        self.login(self.student)
+
+        self.assertEqual(self.cancel().status_code, 409)
