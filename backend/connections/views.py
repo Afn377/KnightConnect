@@ -51,3 +51,12 @@ class ConnectionRequestListView(generics.ListAPIView):
         return Response(
             self.get_serializer(connection_request).data, status=status.HTTP_201_CREATED
         )
+
+
+class ConnectionRequestDetailView(generics.RetrieveAPIView):
+    """One request, visible only to its two participants."""
+
+    serializer_class = ConnectionRequestSerializer
+
+    def get_queryset(self):
+        return requests_involving(self.request.user)
