@@ -182,6 +182,7 @@ REST_FRAMEWORK = {
         # Login code requests, per client (user or IP) and per target email.
         "login_code": os.environ.get("THROTTLE_LOGIN_CODE", "20/hour"),
         "login_code_email": os.environ.get("THROTTLE_LOGIN_CODE_EMAIL", "5/hour"),
+        "login_verify": os.environ.get("THROTTLE_LOGIN_VERIFY", "30/hour"),
     },
 }
 

@@ -182,10 +182,12 @@ class VerifyCodeTests(APITestCase):
         self.assertEqual(self.verify(code).status_code, 400)
 
     def test_code_for_another_email_is_rejected(self):
-        code = self.request_code("first@rutgers.edu")
-        self.request_code("second@rutgers.edu")
+        first_code = self.request_code("first@rutgers.edu")
+        second_code = self.request_code("second@rutgers.edu")
+        if first_code == second_code:
+            self.skipTest("Randomly generated codes collided.")
 
-        self.assertEqual(self.verify(code, email="second@rutgers.edu").status_code, 400) if code != code_from_last_email() else None
+        self.assertEqual(self.verify(first_code, email="second@rutgers.edu").status_code, 400)
 
     def test_rejects_when_no_code_was_requested(self):
         self.assertEqual(self.verify("123456").status_code, 400)
