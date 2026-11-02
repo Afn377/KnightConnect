@@ -5,4 +5,5 @@ from . import views
 urlpatterns = [
     path("requests/", views.ConnectionRequestListView.as_view(), name="request-list"),
     path("requests/<uuid:pk>/", views.ConnectionRequestDetailView.as_view(), name="request-detail"),
+    path("requests/<uuid:pk>/accept/", views.AcceptRequestView.as_view(), name="request-accept"),
 ]

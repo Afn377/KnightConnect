@@ -1,13 +1,13 @@
 from django.db.models import Q
 from rest_framework import generics, status
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
 from core.throttles import ScopedRateThrottle
 
 from .models import ConnectionRequest
 from .serializers import ConnectionRequestSerializer, SendRequestSerializer
-from .services import send_request
+from .services import accept_request, send_request
 
 
 def requests_involving(user):
@@ -60,3 +60,29 @@ class ConnectionRequestDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         return requests_involving(self.request.user)
+
+
+class RespondToRequestView(generics.GenericAPIView):
+    """Base for actions one participant takes on a request."""
+
+    serializer_class = ConnectionRequestSerializer
+    allowed_party = "recipient"
+
+    def get_queryset(self):
+        return requests_involving(self.request.user)
+
+    def get_request_for_action(self):
+        connection_request = self.get_object()
+        if getattr(connection_request, f"{self.allowed_party}_id") != self.request.user.id:
+            raise PermissionDenied(f"Only the {self.allowed_party} can do this.")
+        return connection_request
+
+    def respond(self, connection_request):
+        connection_request = self.get_queryset().get(pk=connection_request.pk)
+        return Response(self.get_serializer(connection_request).data)
+
+
+class AcceptRequestView(RespondToRequestView):
+    def post(self, request, *args, **kwargs):
+        connection_request = accept_request(self.get_request_for_action(), actor=request.user)
+        return self.respond(connection_request)

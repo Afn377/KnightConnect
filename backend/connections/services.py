@@ -1,9 +1,13 @@
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Count, Q
+from django.utils import timezone
 
 from analytics.models import FunnelEvent
 from core.exceptions import Conflict
+from opportunities.models import Opportunity
+from opportunities.services import close_opportunity
 
+from .emails import send_connection_accepted_emails
 from .models import ConnectionRequest
 
 
@@ -42,3 +46,48 @@ def send_request(*, opportunity, sender, recipient, kind, opportunity_role=None,
         kind=kind,
     )
     return request
+
+
+def _accepted_count(opportunity_role):
+    return opportunity_role.connection_requests.filter(status=ConnectionRequest.Status.ACCEPTED).count()
+
+
+def _all_roles_filled(opportunity):
+    roles = opportunity.roles.annotate(
+        filled=Count("connection_requests", filter=Q(connection_requests__status=ConnectionRequest.Status.ACCEPTED))
+    )
+    return roles.exists() and all(role.filled >= role.slots for role in roles)
+
+
+def accept_request(connection_request, *, actor):
+    """Accept a pending request, closing the opportunity once every role is filled.
+
+    Both participants are emailed each other's contact details afterwards.
+    """
+    with transaction.atomic():
+        opportunity = Opportunity.objects.select_for_update().get(pk=connection_request.opportunity_id)
+        connection_request = ConnectionRequest.objects.select_for_update().get(pk=connection_request.pk)
+
+        if connection_request.status != ConnectionRequest.Status.PENDING:
+            raise Conflict("Only pending requests can be accepted.")
+        if not opportunity.is_active:
+            raise Conflict("This opportunity is no longer recruiting.")
+        role = connection_request.opportunity_role
+        if role is not None and _accepted_count(role) >= role.slots:
+            raise Conflict("This role has already been filled.")
+
+        connection_request.status = ConnectionRequest.Status.ACCEPTED
+        connection_request.responded_at = timezone.now()
+        connection_request.save(update_fields=["status", "responded_at", "updated_at"])
+        FunnelEvent.record(
+            FunnelEvent.Type.REQUEST_ACCEPTED,
+            user=actor,
+            opportunity=opportunity,
+            connection_request=connection_request,
+        )
+
+        if _all_roles_filled(opportunity):
+            close_opportunity(opportunity, Opportunity.CloseReason.FILLED)
+
+    send_connection_accepted_emails(connection_request)
+    return connection_request
