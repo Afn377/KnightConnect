@@ -5,6 +5,7 @@ from django.conf import settings
 from django.core import mail
 from django.test import override_settings
 from django.utils import timezone
+from rest_framework.test import APIClient
 
 from accounts.models import LoginCode, User
 from core.testing import APITestCase, make_user
@@ -210,3 +211,27 @@ class VerifyCodeTests(APITestCase):
         self.verify("111111")
 
         self.assertEqual(self.verify("111111").status_code, 429)
+
+
+class LogoutTests(APITestCase):
+    url = "/api/auth/logout/"
+
+    def test_ends_the_session(self):
+        self.login(make_user())
+
+        response = self.client.post(self.url)
+
+        self.assertEqual(response.status_code, 204)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_requires_authentication(self):
+        self.assertEqual(self.client.post(self.url).status_code, 401)
+
+    def test_requires_csrf_token(self):
+        client = APIClient(enforce_csrf_checks=True)
+        client.force_login(make_user())
+
+        self.assertEqual(client.post(self.url).status_code, 403)
+
+        token = client.get("/api/auth/csrf/").json()["csrf_token"]
+        self.assertEqual(client.post(self.url, HTTP_X_CSRFTOKEN=token).status_code, 204)
