@@ -37,7 +37,7 @@ class MeRetrieveTests(APITestCase):
         self.assertEqual(body["availability"], ["weekend_morning"])
         self.assertEqual(body["commitment"], "moderate")
         self.assertEqual(body["preferred_roles"], [{"slug": "backend-developer", "name": "Backend developer"}])
-        self.assertEqual(body["interests"], [{"slug": "ai-ml", "name": "AI/ML"}])
+        self.assertEqual(body["interests"], [{"slug": "aiml", "name": "AI/ML"}])
         self.assertEqual(body["skills"], [{"skill": {"slug": "python", "name": "Python"}, "proficiency": "advanced"}])
         self.assertTrue(body["is_profile_complete"])
 

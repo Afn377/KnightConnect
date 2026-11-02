@@ -82,6 +82,7 @@ class UserSkill(models.Model):
     )
 
     class Meta:
+        ordering = ["skill__name"]
         constraints = [
             models.UniqueConstraint(fields=["user", "skill"], name="accounts_userskill_unique"),
         ]

@@ -3,7 +3,7 @@ from django.http import JsonResponse
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET
-from rest_framework import status
+from rest_framework import generics, status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -13,7 +13,7 @@ from core.throttles import EmailRateThrottle, ScopedRateThrottle
 
 from .login_codes import InvalidLoginCode, issue_login_code, verify_login_code
 from .models import User
-from .serializers import RequestCodeSerializer, SessionUserSerializer, VerifyCodeSerializer
+from .serializers import MeSerializer, RequestCodeSerializer, SessionUserSerializer, VerifyCodeSerializer
 
 
 @require_GET
@@ -78,3 +78,12 @@ class LogoutView(APIView):
     def post(self, request):
         logout(request)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class MeView(generics.RetrieveAPIView):
+    """The signed-in user's own profile."""
+
+    serializer_class = MeSerializer
+
+    def get_object(self):
+        return self.request.user
