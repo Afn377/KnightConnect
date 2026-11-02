@@ -175,3 +175,44 @@ class SendRequestTests(RequestFixtures, APITestCase):
 
     def test_requires_authentication(self):
         self.assertEqual(self.send().status_code, 401)
+
+
+class ListRequestsTests(RequestFixtures, APITestCase):
+    url = "/api/requests/"
+
+    def setUp(self):
+        super().setUp()
+        self.make_world()
+        self.outsider = make_user()
+        self.incoming = self.make_request(sender=make_user(), recipient=self.owner)
+        self.outgoing = self.make_request(kind="invite", sender=self.owner, recipient=self.student, status="declined")
+        self.make_request(sender=self.outsider, recipient=make_user())
+        self.login(self.owner)
+
+    def ids(self, **params):
+        response = self.client.get(self.url, params)
+        self.assertEqual(response.status_code, 200)
+        return [item["id"] for item in response.json()["results"]]
+
+    def test_lists_requests_involving_me_newest_first(self):
+        self.assertEqual(self.ids(), [str(self.outgoing.id), str(self.incoming.id)])
+
+    def test_filters_incoming_and_outgoing(self):
+        self.assertEqual(self.ids(box="incoming"), [str(self.incoming.id)])
+        self.assertEqual(self.ids(box="outgoing"), [str(self.outgoing.id)])
+
+    def test_filters_by_status(self):
+        self.assertEqual(self.ids(status="pending"), [str(self.incoming.id)])
+
+    def test_marks_direction_from_my_side(self):
+        results = self.client.get(self.url).json()["results"]
+
+        self.assertEqual({item["id"]: item["direction"] for item in results}, {str(self.outgoing.id): "outgoing", str(self.incoming.id): "incoming"})
+
+    def test_rejects_unknown_box(self):
+        self.assertEqual(self.client.get(self.url, {"box": "spam"}).status_code, 400)
+
+    def test_requires_authentication(self):
+        self.client.logout()
+
+        self.assertEqual(self.client.get(self.url).status_code, 401)
