@@ -1,3 +1,5 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
 from django.db import transaction
 from rest_framework import serializers
 
@@ -78,6 +80,53 @@ class MeSerializer(serializers.ModelSerializer):
 
 
 class ContactMethodSerializer(serializers.ModelSerializer):
+    """A contact method owned by the signed-in user.
+
+    Marking a method as preferred clears the preference on the user's other
+    methods, since only one can be preferred at a time.
+    """
+
     class Meta:
         model = ContactMethod
         fields = ["id", "kind", "value", "is_preferred"]
+        # Uniqueness per user is checked in validate(), since the user is not a writable field.
+        validators = []
+
+    def validate(self, attrs):
+        user = self.context["request"].user
+        kind = attrs.get("kind", getattr(self.instance, "kind", None))
+        value = attrs.get("value", getattr(self.instance, "value", None))
+
+        if kind == ContactMethod.Kind.EMAIL:
+            try:
+                validate_email(value)
+            except DjangoValidationError:
+                raise serializers.ValidationError({"value": ["Enter a valid email address."]})
+
+        duplicates = ContactMethod.objects.filter(user=user, kind=kind)
+        if self.instance is not None:
+            duplicates = duplicates.exclude(pk=self.instance.pk)
+        if duplicates.exists():
+            raise serializers.ValidationError(
+                {"kind": ["You already have a contact method of this kind."]}
+            )
+        return attrs
+
+    def _clear_other_preferences(self, user, keep=None):
+        others = ContactMethod.objects.filter(user=user, is_preferred=True)
+        if keep is not None:
+            others = others.exclude(pk=keep.pk)
+        others.update(is_preferred=False)
+
+    @transaction.atomic
+    def create(self, validated_data):
+        user = self.context["request"].user
+        if validated_data.get("is_preferred"):
+            self._clear_other_preferences(user)
+        return ContactMethod.objects.create(user=user, **validated_data)
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        if validated_data.get("is_preferred"):
+            self._clear_other_preferences(instance.user, keep=instance)
+        return super().update(instance, validated_data)

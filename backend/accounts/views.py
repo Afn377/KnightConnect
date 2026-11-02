@@ -110,7 +110,7 @@ class MeView(generics.RetrieveUpdateAPIView):
         )
 
 
-class ContactMethodListView(generics.ListAPIView):
+class ContactMethodListView(generics.ListCreateAPIView):
     """The signed-in user's contact methods, revealed to others only after an accepted connection."""
 
     serializer_class = ContactMethodSerializer
