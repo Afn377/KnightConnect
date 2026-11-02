@@ -81,3 +81,40 @@ class ContactMethodCreateTests(APITestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("value", response.json())
+
+
+class ContactMethodUpdateTests(APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.user = self.login(make_user())
+        self.discord = ContactMethod.objects.create(user=self.user, kind="discord", value="knight")
+        self.email = ContactMethod.objects.create(user=self.user, kind="email", value="a@rutgers.edu", is_preferred=True)
+
+    def patch(self, method, data):
+        return self.client.patch(f"/api/me/contact-methods/{method.id}/", data, format="json")
+
+    def test_updates_value(self):
+        response = self.patch(self.discord, {"value": "scarlet"})
+
+        self.assertEqual(response.status_code, 200)
+        self.discord.refresh_from_db()
+        self.assertEqual(self.discord.value, "scarlet")
+
+    def test_switching_preference_clears_previous(self):
+        response = self.patch(self.discord, {"is_preferred": True})
+
+        self.assertEqual(response.status_code, 200)
+        self.email.refresh_from_db()
+        self.discord.refresh_from_db()
+        self.assertTrue(self.discord.is_preferred)
+        self.assertFalse(self.email.is_preferred)
+
+    def test_cannot_change_to_kind_already_used(self):
+        self.assertEqual(self.patch(self.discord, {"kind": "email", "value": "b@rutgers.edu"}).status_code, 400)
+
+    def test_cannot_update_someone_elses_method(self):
+        other = ContactMethod.objects.create(user=make_user(), kind="discord", value="someone")
+
+        self.assertEqual(self.patch(other, {"value": "hijacked"}).status_code, 404)
+        other.refresh_from_db()
+        self.assertEqual(other.value, "someone")
