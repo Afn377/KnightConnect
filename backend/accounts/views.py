@@ -118,3 +118,11 @@ class ContactMethodListView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         return ContactMethod.objects.filter(user=self.request.user)
+
+
+class ContactMethodDetailView(generics.UpdateAPIView):
+    serializer_class = ContactMethodSerializer
+    http_method_names = ["patch", "options"]
+
+    def get_queryset(self):
+        return ContactMethod.objects.filter(user=self.request.user)
