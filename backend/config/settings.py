@@ -185,6 +185,7 @@ REST_FRAMEWORK = {
         "login_verify": os.environ.get("THROTTLE_LOGIN_VERIFY", "30/hour"),
         "report": os.environ.get("THROTTLE_REPORT", "10/day"),
         "connection_request": os.environ.get("THROTTLE_CONNECTION_REQUEST", "30/day"),
+        "analytics": os.environ.get("THROTTLE_ANALYTICS", "600/hour"),
     },
 }
 
