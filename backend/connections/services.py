@@ -91,3 +91,29 @@ def accept_request(connection_request, *, actor):
 
     send_connection_accepted_emails(connection_request)
     return connection_request
+
+
+def _resolve_pending(connection_request, *, status, event_type, actor):
+    with transaction.atomic():
+        connection_request = ConnectionRequest.objects.select_for_update().get(pk=connection_request.pk)
+        if connection_request.status != ConnectionRequest.Status.PENDING:
+            raise Conflict("Only pending requests can be changed.")
+        connection_request.status = status
+        connection_request.responded_at = timezone.now()
+        connection_request.save(update_fields=["status", "responded_at", "updated_at"])
+        FunnelEvent.record(
+            event_type,
+            user=actor,
+            opportunity=connection_request.opportunity,
+            connection_request=connection_request,
+        )
+    return connection_request
+
+
+def decline_request(connection_request, *, actor):
+    return _resolve_pending(
+        connection_request,
+        status=ConnectionRequest.Status.DECLINED,
+        event_type=FunnelEvent.Type.REQUEST_DECLINED,
+        actor=actor,
+    )
