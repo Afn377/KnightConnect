@@ -2,7 +2,9 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 
 from .models import Block
-from .serializers import BlockCreateSerializer, BlockSerializer
+from core.throttles import ScopedRateThrottle
+
+from .serializers import BlockCreateSerializer, BlockSerializer, ReportSerializer
 from .services import block_user
 
 
@@ -37,3 +39,11 @@ class BlockDetailView(generics.DestroyAPIView):
 
     def get_queryset(self):
         return Block.objects.filter(blocker=self.request.user)
+
+
+class ReportCreateView(generics.CreateAPIView):
+    """Report a user (optionally one of their opportunities) to the moderators."""
+
+    serializer_class = ReportSerializer
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "report"

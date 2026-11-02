@@ -183,6 +183,7 @@ REST_FRAMEWORK = {
         "login_code": os.environ.get("THROTTLE_LOGIN_CODE", "20/hour"),
         "login_code_email": os.environ.get("THROTTLE_LOGIN_CODE_EMAIL", "5/hour"),
         "login_verify": os.environ.get("THROTTLE_LOGIN_VERIFY", "30/hour"),
+        "report": os.environ.get("THROTTLE_REPORT", "10/day"),
     },
 }
 
