@@ -214,6 +214,11 @@ LOGIN_CODE_MAX_ATTEMPTS = int(os.environ.get("LOGIN_CODE_MAX_ATTEMPTS", "5"))
 ACCOUNT_DELETION_GRACE_DAYS = int(os.environ.get("ACCOUNT_DELETION_GRACE_DAYS", "3"))
 
 
+# Shared secret Vercel Cron sends as "Authorization: Bearer <secret>" when calling
+# /api/internal/maintenance/. The endpoint refuses every call while it is unset.
+CRON_SECRET = os.environ.get("CRON_SECRET", "")
+
+
 # Matching
 # Relative importance of each scoring factor. Factors that don't apply to a
 # pairing (e.g. an opportunity with no preferred skills) are left out and the
