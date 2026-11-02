@@ -84,3 +84,35 @@ class BlockCreateTests(APITestCase):
         self.client.logout()
 
         self.assertEqual(self.block(self.other.id).status_code, 401)
+
+
+class BlockDeleteTests(APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.user = self.login(make_user())
+        self.other = make_user()
+
+    def unblock(self, user_id):
+        return self.client.delete(f"/api/blocks/{user_id}/")
+
+    def test_unblocks_user(self):
+        Block.objects.create(blocker=self.user, blocked=self.other)
+
+        response = self.unblock(self.other.id)
+
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(Block.objects.exists())
+
+    def test_cannot_remove_a_block_made_by_someone_else(self):
+        Block.objects.create(blocker=self.other, blocked=self.user)
+
+        self.assertEqual(self.unblock(self.other.id).status_code, 404)
+        self.assertTrue(Block.objects.exists())
+
+    def test_not_blocked_is_404(self):
+        self.assertEqual(self.unblock(self.other.id).status_code, 404)
+
+    def test_requires_authentication(self):
+        self.client.logout()
+
+        self.assertEqual(self.unblock(self.other.id).status_code, 401)
