@@ -86,3 +86,15 @@ class OpportunityCloseView(generics.GenericAPIView):
         close_opportunity(opportunity, Opportunity.CloseReason.OWNER_CLOSED, actor=request.user)
         opportunity = with_details(Opportunity.objects.filter(pk=opportunity.pk)).get()
         return Response(self.get_serializer(opportunity).data)
+
+
+class MyOpportunitiesView(generics.ListAPIView):
+    """The signed-in user's own opportunities in any state. Optional ``status`` filter."""
+
+    serializer_class = OpportunitySerializer
+
+    def get_queryset(self):
+        queryset = Opportunity.objects.filter(owner=self.request.user)
+        if status := self.request.query_params.get("status"):
+            queryset = queryset.filter(status=status)
+        return with_details(queryset.order_by("-created_at"))
