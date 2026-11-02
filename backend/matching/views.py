@@ -6,9 +6,9 @@ from rest_framework.response import Response
 from core.exceptions import Conflict
 from opportunities.queries import viewable_by
 
-from .engine import rank_candidates
+from .engine import rank_candidates, rank_opportunities
 from .models import MatchResult
-from .serializers import CandidateMatchSerializer
+from .serializers import CandidateMatchSerializer, OpportunityMatchSerializer
 from .services import record_matches
 
 
@@ -41,3 +41,15 @@ class OpportunityMatchesView(generics.GenericAPIView):
             viewer=request.user,
         )
         return match_response(batch_id, results, CandidateMatchSerializer, self.get_serializer_context())
+
+
+class RecommendationsView(generics.GenericAPIView):
+    """Ranked, explained opportunities for the signed-in student."""
+
+    def get(self, request, *args, **kwargs):
+        batch_id, results = record_matches(
+            rank_opportunities(request.user),
+            direction=MatchResult.Direction.OPPORTUNITIES_FOR_CANDIDATE,
+            viewer=request.user,
+        )
+        return match_response(batch_id, results, OpportunityMatchSerializer, self.get_serializer_context())
