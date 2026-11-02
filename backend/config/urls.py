@@ -26,4 +26,5 @@ urlpatterns = [
     path("api/", include("opportunities.urls")),
     path("api/", include("safety.urls")),
     path("api/", include("connections.urls")),
+    path("api/", include("matching.urls")),
 ]

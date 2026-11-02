@@ -225,3 +225,5 @@ MATCHING_WEIGHTS = {
     "commitment": 0.10,
 }
 MATCHING_RESULT_LIMIT = int(os.environ.get("MATCHING_RESULT_LIMIT", "20"))
+# Fewer results than this are flagged as sparse so the frontend can explain them.
+MATCHING_SPARSE_THRESHOLD = 3
