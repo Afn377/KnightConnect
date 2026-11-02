@@ -2,6 +2,7 @@ import uuid
 
 from django.utils.dateparse import parse_datetime
 
+from accounts.tests.test_auth_api import throttle_rates
 from connections.models import ConnectionRequest
 from core.testing import APITestCase, make_opportunity, make_user
 from safety.models import Block, Report
@@ -116,3 +117,63 @@ class BlockDeleteTests(APITestCase):
         self.client.logout()
 
         self.assertEqual(self.unblock(self.other.id).status_code, 401)
+
+
+class ReportCreateTests(APITestCase):
+    url = "/api/reports/"
+
+    def setUp(self):
+        super().setUp()
+        self.user = self.login(make_user())
+        self.other = make_user()
+
+    def report(self, **data):
+        payload = {"reported_user": str(self.other.id), "reason": "spam"}
+        payload.update(data)
+        return self.client.post(self.url, payload, format="json")
+
+    def test_files_report(self):
+        response = self.report(details="Posting ads")
+
+        self.assertEqual(response.status_code, 201)
+        report = Report.objects.get()
+        self.assertEqual(report.reporter, self.user)
+        self.assertEqual(report.reported_user, self.other)
+        self.assertEqual(report.reason, "spam")
+        self.assertEqual(report.details, "Posting ads")
+        self.assertEqual(report.status, "open")
+        self.assertEqual(response.json(), {"id": str(report.id), "status": "open"})
+
+    def test_can_reference_the_reported_users_opportunity(self):
+        opportunity = make_opportunity(owner=self.other)
+
+        response = self.report(opportunity=str(opportunity.id))
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Report.objects.get().opportunity, opportunity)
+
+    def test_opportunity_must_belong_to_reported_user(self):
+        response = self.report(opportunity=str(make_opportunity().id))
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_cannot_report_self(self):
+        self.assertEqual(self.report(reported_user=str(self.user.id)).status_code, 400)
+
+    def test_rejects_unknown_reason(self):
+        self.assertEqual(self.report(reason="vibes").status_code, 400)
+
+    def test_unknown_user_is_rejected(self):
+        self.assertEqual(self.report(reported_user=str(uuid.uuid4())).status_code, 400)
+
+    @throttle_rates(report="2/day")
+    def test_rate_limited(self):
+        self.report()
+        self.report()
+
+        self.assertEqual(self.report().status_code, 429)
+
+    def test_requires_authentication(self):
+        self.client.logout()
+
+        self.assertEqual(self.report().status_code, 401)
