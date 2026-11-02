@@ -99,14 +99,14 @@ class Opportunity(UUIDModel, TimeStampedModel):
         super().clean()
         if self.expires_at is None:
             return
-        if self._state.adding:
-            now = timezone.now()
-            if self.expires_at <= now:
-                raise ValidationError({"expires_at": "Expiry must be in the future."})
-            if self.expires_at > now + MAX_OPPORTUNITY_LIFETIME:
-                raise ValidationError(
-                    {"expires_at": f"Opportunities can be open for at most {MAX_OPPORTUNITY_LIFETIME.days} days."}
-                )
+        now = timezone.now()
+        if self._state.adding and self.expires_at <= now:
+            raise ValidationError({"expires_at": "Expiry must be in the future."})
+        # Measured from creation so repeated edits can't keep an opportunity open indefinitely.
+        if self.expires_at > (self.created_at or now) + MAX_OPPORTUNITY_LIFETIME:
+            raise ValidationError(
+                {"expires_at": f"Opportunities can be open for at most {MAX_OPPORTUNITY_LIFETIME.days} days."}
+            )
         if self.event_id and self.expires_at > self.event.recruiting_ends_at:
             raise ValidationError(
                 {"expires_at": "Expiry cannot be after the event's recruiting deadline."}

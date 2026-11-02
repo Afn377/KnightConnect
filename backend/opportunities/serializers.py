@@ -2,11 +2,14 @@ import copy
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.db.models import Count
+from django.utils import timezone
 from rest_framework import serializers
 
 from accounts.models import User
 from catalog.models import Event, Interest, Role, Skill
 from catalog.serializers import CatalogSlugField
+from connections.models import ConnectionRequest
 
 from .models import Opportunity, OpportunityRole, OpportunitySkill
 
@@ -79,7 +82,29 @@ class OpportunitySerializer(serializers.ModelSerializer):
         slugs = [entry["role"].slug for entry in roles]
         if len(slugs) != len(set(slugs)):
             raise serializers.ValidationError("Each role can only be listed once.")
+        if self.instance is not None:
+            self._check_filled_roles_kept(roles)
         return roles
+
+    def _check_filled_roles_kept(self, roles):
+        """Roles with accepted members can't be removed or shrunk below their filled count."""
+        filled = dict(
+            ConnectionRequest.objects.filter(
+                opportunity=self.instance,
+                status=ConnectionRequest.Status.ACCEPTED,
+                opportunity_role__isnull=False,
+            )
+            .values_list("opportunity_role__role")
+            .annotate(count=Count("id"))
+        )
+        requested = {entry["role"].pk: entry.get("slots", 1) for entry in roles}
+        for role_id, count in filled.items():
+            if role_id not in requested:
+                raise serializers.ValidationError("A role with accepted members can't be removed.")
+            if requested[role_id] < count:
+                raise serializers.ValidationError(
+                    f"A role can't have fewer slots than its {count} accepted member(s)."
+                )
 
     def validate_skills(self, skills):
         slugs = [entry["skill"].slug for entry in skills]
@@ -92,6 +117,11 @@ class OpportunitySerializer(serializers.ModelSerializer):
         if event is not None and not unchanged and not event.is_recruiting:
             raise serializers.ValidationError("This event is no longer recruiting.")
         return event
+
+    def validate_expires_at(self, expires_at):
+        if expires_at <= timezone.now():
+            raise serializers.ValidationError("Expiry must be in the future.")
+        return expires_at
 
     def validate(self, attrs):
         """Apply the model's own validation (expiry window, event deadline) to the result."""
@@ -121,3 +151,34 @@ class OpportunitySerializer(serializers.ModelSerializer):
             OpportunitySkill(opportunity=opportunity, **entry) for entry in skills
         )
         return opportunity
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        interests = validated_data.pop("interests", None)
+        roles = validated_data.pop("roles", None)
+        skills = validated_data.pop("opportunity_skills", None)
+
+        instance = super().update(instance, validated_data)
+        if interests is not None:
+            instance.interests.set(interests)
+        if roles is not None:
+            self._sync_roles(instance, roles)
+        if skills is not None:
+            instance.opportunity_skills.all().delete()
+            OpportunitySkill.objects.bulk_create(
+                OpportunitySkill(opportunity=instance, **entry) for entry in skills
+            )
+        return instance
+
+    def _sync_roles(self, instance, roles):
+        """Update roles in place so connection requests stay linked to them."""
+        existing = {role.role_id: role for role in instance.roles.all()}
+        for entry in roles:
+            current = existing.pop(entry["role"].pk, None)
+            if current is None:
+                OpportunityRole.objects.create(opportunity=instance, **entry)
+            else:
+                current.slots = entry.get("slots", 1)
+                current.notes = entry.get("notes", "")
+                current.save(update_fields=["slots", "notes"])
+        OpportunityRole.objects.filter(pk__in=[role.pk for role in existing.values()]).delete()

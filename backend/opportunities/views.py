@@ -1,7 +1,9 @@
 from django.db.models import Q
 from rest_framework import generics
+from rest_framework.exceptions import PermissionDenied
 
 from analytics.models import FunnelEvent
+from core.exceptions import Conflict
 
 from .queries import browsable_by, viewable_by, with_details
 from .serializers import OpportunitySerializer
@@ -45,8 +47,19 @@ class OpportunityListView(generics.ListCreateAPIView):
         )
 
 
-class OpportunityDetailView(generics.RetrieveAPIView):
+class OpportunityDetailView(generics.RetrieveUpdateAPIView):
+    """View an opportunity (GET) or, as its owner, edit it while it is open (PATCH)."""
+
     serializer_class = OpportunitySerializer
+    http_method_names = ["get", "patch", "head", "options"]
 
     def get_queryset(self):
         return with_details(viewable_by(self.request.user))
+
+    def update(self, request, *args, **kwargs):
+        opportunity = self.get_object()
+        if opportunity.owner_id != request.user.id:
+            raise PermissionDenied("Only the owner can edit this opportunity.")
+        if not opportunity.is_active:
+            raise Conflict("Closed or expired opportunities can't be edited.")
+        return super().update(request, *args, **kwargs)
