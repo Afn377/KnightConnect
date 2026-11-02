@@ -7,7 +7,7 @@ from accounts.models import UserSkill
 from catalog.models import Interest, Role, Skill
 from connections.models import ConnectionRequest
 from core.testing import make_opportunity, make_user
-from matching.engine import rank_candidates
+from matching.engine import rank_candidates, rank_opportunities
 from opportunities.models import OpportunityRole, OpportunitySkill
 from safety.models import Block
 
@@ -145,3 +145,85 @@ class RankCandidatesTests(MatchingFixtures, TestCase):
             self.make_student(skills=[self.python])
 
         self.assertEqual(len(rank_candidates(self.opportunity, limit=2)), 2)
+
+
+class RankOpportunitiesTests(MatchingFixtures, TestCase):
+    def setUp(self):
+        self.make_catalog()
+        self.student = self.make_student(
+            skills=[self.python, self.react],
+            preferred_roles=[self.backend],
+            interests=[self.ai],
+            availability=["weekend_morning", "weekend_afternoon"],
+        )
+
+    def post(self, required=(), preferred=(), roles=((None, 1),), **fields):
+        defaults = {"availability": ["weekend_morning"], "commitment": "full_event"}
+        defaults.update(fields)
+        opportunity = make_opportunity(**defaults)
+        for role, slots in roles:
+            OpportunityRole.objects.create(opportunity=opportunity, role=role or self.backend, slots=slots)
+        for skill in required:
+            OpportunitySkill.objects.create(opportunity=opportunity, skill=skill, requirement_type="required")
+        for skill in preferred:
+            OpportunitySkill.objects.create(opportunity=opportunity, skill=skill, requirement_type="preferred")
+        return opportunity
+
+    def opportunities(self):
+        return [match.opportunity for match in rank_opportunities(self.student)]
+
+    def test_includes_opportunities_the_student_qualifies_for(self):
+        opportunity = self.post(required=[self.python])
+
+        self.assertEqual(self.opportunities(), [opportunity])
+        self.assertEqual(rank_opportunities(self.student)[0].candidate, self.student)
+
+    def test_excludes_missing_required_skill_and_no_availability_overlap(self):
+        self.post(required=[self.figma])
+        self.post(availability=["weekday_evening"])
+
+        self.assertEqual(self.opportunities(), [])
+
+    def test_excludes_own_closed_and_hidden_opportunities(self):
+        from opportunities.models import Opportunity
+
+        self.post(owner=self.student)
+        self.post().close(Opportunity.CloseReason.OWNER_CLOSED)
+        self.post(expires_at=timezone.now() - timedelta(minutes=1))
+        blocked = self.post()
+        Block.objects.create(blocker=blocked.owner, blocked=self.student)
+
+        self.assertEqual(self.opportunities(), [])
+
+    def test_excludes_opportunities_already_requested_or_joined(self):
+        pending = self.post()
+        joined = self.post()
+        declined = self.post()
+        ConnectionRequest.objects.create(opportunity=pending, kind="join", sender=self.student, recipient=pending.owner)
+        ConnectionRequest.objects.create(opportunity=joined, kind="invite", sender=joined.owner, recipient=self.student, status="accepted")
+        ConnectionRequest.objects.create(opportunity=declined, kind="join", sender=self.student, recipient=declined.owner, status="declined")
+
+        self.assertEqual(self.opportunities(), [declined])
+
+    def test_excludes_opportunities_with_every_role_filled(self):
+        full = self.post()
+        ConnectionRequest.objects.create(
+            opportunity=full, opportunity_role=full.roles.get(), kind="join", sender=make_user(), recipient=full.owner, status="accepted"
+        )
+
+        self.assertEqual(self.opportunities(), [])
+
+    def test_better_fit_ranks_higher(self):
+        weak = self.post(roles=[(self.designer, 1)], preferred=[self.figma], commitment="light")
+        strong = self.post(preferred=[self.react], interests=[self.ai], availability=["weekend_morning", "weekend_afternoon"])
+
+        self.assertEqual(self.opportunities(), [strong, weak])
+
+    def test_explains_the_ranking(self):
+        self.post(preferred=[self.react], interests=[self.ai])
+
+        labels = [factor.label for factor in rank_opportunities(self.student)[0].factors]
+
+        self.assertIn("React experience", labels)
+        self.assertIn("Fits the Backend developer role", labels)
+        self.assertIn("Interested in AI", labels)
