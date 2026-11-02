@@ -473,3 +473,35 @@ class OpportunityCloseTests(APITestCase):
         self.client.logout()
 
         self.assertEqual(self.close().status_code, 401)
+
+
+class MyOpportunitiesTests(APITestCase):
+    url = "/api/opportunities/mine/"
+
+    def setUp(self):
+        super().setUp()
+        self.owner = self.login(make_user())
+
+    def test_lists_own_opportunities_in_any_state_newest_first(self):
+        make_opportunity(owner=self.owner, title="Closed").close(Opportunity.CloseReason.FILLED)
+        make_opportunity(owner=self.owner, title="Expired", expires_at=timezone.now() - timedelta(hours=1))
+        make_opportunity(owner=self.owner, title="Open")
+        make_opportunity(title="Someone else's")
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([item["title"] for item in response.json()["results"]], ["Open", "Expired", "Closed"])
+
+    def test_filters_by_status(self):
+        make_opportunity(owner=self.owner, title="Closed").close(Opportunity.CloseReason.FILLED)
+        make_opportunity(owner=self.owner, title="Open")
+
+        response = self.client.get(self.url, {"status": "closed"})
+
+        self.assertEqual([item["title"] for item in response.json()["results"]], ["Closed"])
+
+    def test_requires_authentication(self):
+        self.client.logout()
+
+        self.assertEqual(self.client.get(self.url).status_code, 401)
