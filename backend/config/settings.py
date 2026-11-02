@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     "catalog",
     "accounts",
     "opportunities",
+    "connections",
 ]
 
 MIDDLEWARE = [
