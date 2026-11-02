@@ -3,7 +3,9 @@
 import itertools
 from datetime import timedelta
 
+from django.conf import settings
 from django.core.cache import cache
+from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APITestCase as DRFAPITestCase
 
@@ -51,6 +53,16 @@ def make_opportunity(owner=None, **fields):
     if interests is not None:
         opportunity.interests.set(interests)
     return opportunity
+
+
+def throttle_rates(**rates):
+    """Override selected DRF throttle rates, e.g. ``@throttle_rates(report="2/day")``."""
+    return override_settings(
+        REST_FRAMEWORK={
+            **settings.REST_FRAMEWORK,
+            "DEFAULT_THROTTLE_RATES": {**settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"], **rates},
+        }
+    )
 
 
 class APITestCase(DRFAPITestCase):

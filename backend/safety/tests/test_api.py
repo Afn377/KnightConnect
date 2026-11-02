@@ -2,9 +2,8 @@ import uuid
 
 from django.utils.dateparse import parse_datetime
 
-from accounts.tests.test_auth_api import throttle_rates
 from connections.models import ConnectionRequest
-from core.testing import APITestCase, make_opportunity, make_user
+from core.testing import APITestCase, make_opportunity, make_user, throttle_rates
 from safety.models import Block, Report
 
 

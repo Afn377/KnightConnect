@@ -1,23 +1,13 @@
 import re
 from datetime import timedelta
 
-from django.conf import settings
 from django.core import mail
 from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import LoginCode, User
-from core.testing import APITestCase, make_user
-
-
-def throttle_rates(**rates):
-    return override_settings(
-        REST_FRAMEWORK={
-            **settings.REST_FRAMEWORK,
-            "DEFAULT_THROTTLE_RATES": {**settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"], **rates},
-        }
-    )
+from core.testing import APITestCase, make_user, throttle_rates
 
 
 def code_from_last_email():
