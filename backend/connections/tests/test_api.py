@@ -379,3 +379,42 @@ class AcceptRequestTests(RequestFixtures, APITestCase):
 
     def test_requires_authentication(self):
         self.assertEqual(self.accept().status_code, 401)
+
+
+class DeclineRequestTests(RequestFixtures, APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.make_world()
+        self.request_ = self.make_request()
+
+    def decline(self):
+        return self.client.post(f"/api/requests/{self.request_.id}/decline/")
+
+    def test_recipient_declines(self):
+        self.login(self.owner)
+
+        response = self.decline()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "declined")
+        self.request_.refresh_from_db()
+        self.assertEqual(self.request_.status, "declined")
+        self.assertIsNotNone(self.request_.responded_at)
+        self.assertTrue(FunnelEvent.objects.filter(event_type="request_declined", connection_request=self.request_).exists())
+
+    def test_sender_cannot_decline(self):
+        self.login(self.student)
+
+        self.assertEqual(self.decline().status_code, 403)
+
+    def test_only_pending_requests_can_be_declined(self):
+        self.request_.status = "accepted"
+        self.request_.save()
+        self.login(self.owner)
+
+        self.assertEqual(self.decline().status_code, 409)
+
+    def test_outsider_gets_404(self):
+        self.login(make_user())
+
+        self.assertEqual(self.decline().status_code, 404)
