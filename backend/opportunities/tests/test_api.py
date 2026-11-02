@@ -414,3 +414,62 @@ class OpportunityUpdateTests(OpportunityFixtures, APITestCase):
         self.client.logout()
 
         self.assertEqual(self.patch({"title": "x"}).status_code, 401)
+
+
+class OpportunityCloseTests(APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.owner = self.login(make_user())
+        self.opportunity = make_opportunity(owner=self.owner)
+
+    def close(self):
+        return self.client.post(f"/api/opportunities/{self.opportunity.id}/close/")
+
+    def test_owner_closes_opportunity(self):
+        response = self.close()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "closed")
+        self.opportunity.refresh_from_db()
+        self.assertEqual(self.opportunity.status, "closed")
+        self.assertEqual(self.opportunity.close_reason, "owner_closed")
+
+    def test_expires_pending_requests_but_keeps_accepted_ones(self):
+        pending = ConnectionRequest.objects.create(opportunity=self.opportunity, kind="join", sender=make_user(), recipient=self.owner)
+        accepted = ConnectionRequest.objects.create(
+            opportunity=self.opportunity, kind="join", sender=make_user(), recipient=self.owner, status="accepted"
+        )
+
+        self.close()
+
+        pending.refresh_from_db()
+        accepted.refresh_from_db()
+        self.assertEqual(pending.status, "expired")
+        self.assertIsNotNone(pending.responded_at)
+        self.assertEqual(accepted.status, "accepted")
+
+    def test_records_funnel_event(self):
+        from analytics.models import FunnelEvent
+
+        self.close()
+
+        event = FunnelEvent.objects.get(event_type="opportunity_closed")
+        self.assertEqual(event.opportunity, self.opportunity)
+        self.assertEqual(event.metadata, {"reason": "owner_closed"})
+
+    def test_non_owner_is_forbidden(self):
+        self.login(make_user())
+
+        self.assertEqual(self.close().status_code, 403)
+        self.opportunity.refresh_from_db()
+        self.assertEqual(self.opportunity.status, "open")
+
+    def test_already_closed_is_conflict(self):
+        self.opportunity.close(Opportunity.CloseReason.FILLED)
+
+        self.assertEqual(self.close().status_code, 409)
+
+    def test_requires_authentication(self):
+        self.client.logout()
+
+        self.assertEqual(self.close().status_code, 401)
