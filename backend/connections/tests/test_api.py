@@ -216,3 +216,47 @@ class ListRequestsTests(RequestFixtures, APITestCase):
         self.client.logout()
 
         self.assertEqual(self.client.get(self.url).status_code, 401)
+
+
+class RequestDetailTests(RequestFixtures, APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.make_world()
+        self.request_ = self.make_request(message="Hi!")
+
+    def get(self):
+        return self.client.get(f"/api/requests/{self.request_.id}/")
+
+    def test_participants_can_view(self):
+        for user in (self.owner, self.student):
+            self.login(user)
+            response = self.get()
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["message"], "Hi!")
+
+    def test_contact_methods_hidden_until_accepted(self):
+        from accounts.models import ContactMethod
+
+        ContactMethod.objects.create(user=self.owner, kind="discord", value="owner#1")
+        self.login(self.student)
+        self.assertIsNone(self.get().json()["contact_methods"])
+
+        self.request_.status = "accepted"
+        self.request_.save()
+
+        self.assertEqual(self.get().json()["contact_methods"], [{"kind": "discord", "value": "owner#1"}])
+
+    def test_falls_back_to_rutgers_email_without_contact_methods(self):
+        self.request_.status = "accepted"
+        self.request_.save()
+        self.login(self.owner)
+
+        self.assertEqual(self.get().json()["contact_methods"], [{"kind": "email", "value": self.student.email}])
+
+    def test_outsiders_get_404(self):
+        self.login(make_user())
+
+        self.assertEqual(self.get().status_code, 404)
+
+    def test_requires_authentication(self):
+        self.assertEqual(self.get().status_code, 401)
