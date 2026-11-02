@@ -20,7 +20,7 @@ from accounts.models import User
 from connections.models import ConnectionRequest
 from core.choices import AvailabilitySlot, Commitment
 from opportunities.models import OpportunitySkill
-from opportunities.queries import with_details
+from opportunities.queries import browsable_by, with_details
 
 LIVE_STATUSES = [ConnectionRequest.Status.PENDING, ConnectionRequest.Status.ACCEPTED]
 
@@ -195,6 +195,30 @@ def rank_candidates(opportunity, *, limit=None):
             continue
         total, factors = score(requirements, profile)
         matches.append(Match(opportunity=opportunity, candidate=candidate, score=total, factors=factors))
+
+    matches.sort(key=lambda match: match.score, reverse=True)
+    return matches[:limit]
+
+
+def rank_opportunities(student, *, limit=None):
+    """Rank open opportunities ``student`` could join, best fit first."""
+    limit = limit or settings.MATCHING_RESULT_LIMIT
+    already_involved = ConnectionRequest.objects.filter(
+        Q(sender=student) | Q(recipient=student), status__in=LIVE_STATUSES
+    ).values("opportunity")
+    opportunities = with_details(
+        browsable_by(student).exclude(owner=student).exclude(pk__in=already_involved)
+    ).order_by("-created_at")
+
+    student = _profile_prefetches(User.objects.filter(pk=student.pk)).get()
+    profile = profile_for(student)
+    matches = []
+    for opportunity in opportunities:
+        requirements = requirements_for(opportunity)
+        if not requirements.open_roles or not passes_required_filters(requirements, profile):
+            continue
+        total, factors = score(requirements, profile)
+        matches.append(Match(opportunity=opportunity, candidate=student, score=total, factors=factors))
 
     matches.sort(key=lambda match: match.score, reverse=True)
     return matches[:limit]
