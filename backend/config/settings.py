@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     "accounts",
     "opportunities",
     "connections",
+    "matching",
 ]
 
 MIDDLEWARE = [
