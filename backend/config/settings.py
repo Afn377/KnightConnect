@@ -206,3 +206,6 @@ ALLOWED_EMAIL_DOMAINS = env_list(
 LOGIN_CODE_LENGTH = 6
 LOGIN_CODE_TTL_MINUTES = int(os.environ.get("LOGIN_CODE_TTL_MINUTES", "10"))
 LOGIN_CODE_MAX_ATTEMPTS = int(os.environ.get("LOGIN_CODE_MAX_ATTEMPTS", "5"))
+
+# Deleted accounts can be restored by signing in again within this window.
+ACCOUNT_DELETION_GRACE_DAYS = int(os.environ.get("ACCOUNT_DELETION_GRACE_DAYS", "3"))

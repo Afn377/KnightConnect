@@ -46,6 +46,12 @@ class User(UUIDModel, AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     last_seen_at = models.DateTimeField(null=True, blank=True)
+    deletion_scheduled_for = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When set, the account is hidden and will be permanently deleted at this time "
+        "unless the user signs in again first.",
+    )
 
     objects = UserManager()
 

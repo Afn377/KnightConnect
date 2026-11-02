@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 
 from core.throttles import EmailRateThrottle, ScopedRateThrottle
 
+from .deletion import restore_account, schedule_account_deletion
 from .login_codes import InvalidLoginCode, issue_login_code, verify_login_code
 from .models import User
 from .serializers import MeSerializer, RequestCodeSerializer, SessionUserSerializer, VerifyCodeSerializer
@@ -70,8 +71,11 @@ class VerifyCodeView(APIView):
         if not user.is_active:
             raise PermissionDenied("This account has been disabled.")
 
+        restored = restore_account(user)
         login(request, user)
-        return Response({"user": SessionUserSerializer(user).data, "created": created})
+        return Response(
+            {"user": SessionUserSerializer(user).data, "created": created, "restored": restored}
+        )
 
 
 class LogoutView(APIView):
@@ -81,10 +85,26 @@ class LogoutView(APIView):
 
 
 class MeView(generics.RetrieveUpdateAPIView):
-    """The signed-in user's own profile."""
+    """The signed-in user's own profile.
+
+    DELETE schedules the account for deletion after a grace period and
+    signs the user out; signing in again before then restores it.
+    """
 
     serializer_class = MeSerializer
-    http_method_names = ["get", "patch", "head", "options"]
+    http_method_names = ["get", "patch", "delete", "head", "options"]
 
     def get_object(self):
         return self.request.user
+
+    def delete(self, request):
+        user = request.user
+        schedule_account_deletion(user)
+        logout(request)
+        return Response(
+            {
+                "detail": "Your account is scheduled for deletion. Sign in again before then to restore it.",
+                "deletion_scheduled_for": user.deletion_scheduled_for,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
