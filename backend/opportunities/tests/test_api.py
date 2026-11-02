@@ -262,3 +262,55 @@ class OpportunityCreateTests(OpportunityFixtures, APITestCase):
         self.client.logout()
 
         self.assertEqual(self.post().status_code, 401)
+
+
+class OpportunityDetailTests(OpportunityFixtures, APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.make_catalog()
+        self.viewer = self.login(make_user())
+        self.opportunity = make_opportunity()
+        OpportunityRole.objects.create(opportunity=self.opportunity, role=self.backend, slots=2)
+
+    def get(self, opportunity=None):
+        return self.client.get(f"/api/opportunities/{(opportunity or self.opportunity).id}/")
+
+    def test_returns_active_opportunity(self):
+        response = self.get()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["id"], str(self.opportunity.id))
+        self.assertEqual(response.json()["roles"][0]["filled"], 0)
+
+    def test_closed_opportunity_hidden_from_others(self):
+        self.opportunity.close(Opportunity.CloseReason.OWNER_CLOSED)
+
+        self.assertEqual(self.get().status_code, 404)
+
+    def test_owner_can_view_closed_opportunity(self):
+        self.opportunity.close(Opportunity.CloseReason.FILLED)
+        self.login(self.opportunity.owner)
+
+        response = self.get()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "closed")
+        self.assertEqual(response.json()["close_reason"], "filled")
+
+    def test_request_participant_can_view_closed_opportunity(self):
+        ConnectionRequest.objects.create(
+            opportunity=self.opportunity, kind="join", sender=self.viewer, recipient=self.opportunity.owner, status="accepted"
+        )
+        self.opportunity.close(Opportunity.CloseReason.FILLED)
+
+        self.assertEqual(self.get().status_code, 200)
+
+    def test_hidden_when_blocked(self):
+        Block.objects.create(blocker=self.opportunity.owner, blocked=self.viewer)
+
+        self.assertEqual(self.get().status_code, 404)
+
+    def test_requires_authentication(self):
+        self.client.logout()
+
+        self.assertEqual(self.get().status_code, 401)
