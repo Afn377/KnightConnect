@@ -450,3 +450,81 @@ class CancelRequestTests(RequestFixtures, APITestCase):
         self.login(self.student)
 
         self.assertEqual(self.cancel().status_code, 409)
+
+
+class ConnectionFeedbackTests(RequestFixtures, APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.make_world()
+        self.request_ = self.make_request(status="accepted")
+
+    def rate(self, **data):
+        payload = {"was_useful": True}
+        payload.update(data)
+        return self.client.post(f"/api/requests/{self.request_.id}/feedback/", payload, format="json")
+
+    def test_participant_rates_connection(self):
+        from connections.models import ConnectionFeedback
+
+        self.login(self.student)
+
+        response = self.rate(was_useful=False, comment="Never replied")
+
+        self.assertEqual(response.status_code, 201)
+        feedback = ConnectionFeedback.objects.get()
+        self.assertEqual(feedback.user, self.student)
+        self.assertFalse(feedback.was_useful)
+        self.assertEqual(feedback.comment, "Never replied")
+        self.assertEqual(response.json()["was_useful"], False)
+
+    def test_both_participants_can_rate(self):
+        self.login(self.student)
+        self.assertEqual(self.rate().status_code, 201)
+
+        self.login(self.owner)
+        self.assertEqual(self.rate().status_code, 201)
+
+    def test_records_funnel_event(self):
+        self.login(self.owner)
+
+        self.rate()
+
+        event = FunnelEvent.objects.get(event_type="connection_rated")
+        self.assertEqual(event.connection_request, self.request_)
+        self.assertEqual(event.metadata, {"was_useful": True})
+
+    def test_request_shows_my_feedback(self):
+        self.login(self.student)
+        self.assertIsNone(self.client.get(f"/api/requests/{self.request_.id}/").json()["my_feedback"])
+
+        self.rate(comment="Great team")
+
+        self.assertEqual(
+            self.client.get(f"/api/requests/{self.request_.id}/").json()["my_feedback"],
+            {"was_useful": True, "comment": "Great team"},
+        )
+
+    def test_can_only_rate_once(self):
+        self.login(self.student)
+        self.rate()
+
+        self.assertEqual(self.rate().status_code, 409)
+
+    def test_only_accepted_connections_can_be_rated(self):
+        self.request_.status = "pending"
+        self.request_.save()
+        self.login(self.student)
+
+        self.assertEqual(self.rate().status_code, 409)
+
+    def test_was_useful_is_required(self):
+        self.login(self.student)
+
+        response = self.client.post(f"/api/requests/{self.request_.id}/feedback/", {}, format="json")
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_outsider_gets_404(self):
+        self.login(make_user())
+
+        self.assertEqual(self.rate().status_code, 404)
