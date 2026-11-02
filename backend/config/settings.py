@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     # Local
     "core",
     "catalog",
+    "accounts",
 ]
 
 MIDDLEWARE = [
@@ -107,6 +108,9 @@ if DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
     DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = env_bool(
         "DATABASE_POOLED", default=True
     )
+
+
+AUTH_USER_MODEL = "accounts.User"
 
 
 # Password validation
