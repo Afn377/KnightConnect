@@ -27,3 +27,13 @@ class BlockListView(generics.ListAPIView):
             BlockSerializer(block).data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
+
+
+class BlockDetailView(generics.DestroyAPIView):
+    """Unblock a user, addressed by their user id."""
+
+    lookup_field = "blocked_id"
+    lookup_url_kwarg = "user_id"
+
+    def get_queryset(self):
+        return Block.objects.filter(blocker=self.request.user)
