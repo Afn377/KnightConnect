@@ -118,3 +118,25 @@ class ContactMethodUpdateTests(APITestCase):
         self.assertEqual(self.patch(other, {"value": "hijacked"}).status_code, 404)
         other.refresh_from_db()
         self.assertEqual(other.value, "someone")
+
+
+class ContactMethodDeleteTests(APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.user = self.login(make_user())
+
+    def test_removes_contact_method(self):
+        method = ContactMethod.objects.create(user=self.user, kind="discord", value="knight")
+
+        response = self.client.delete(f"/api/me/contact-methods/{method.id}/")
+
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(ContactMethod.objects.exists())
+
+    def test_cannot_remove_someone_elses_method(self):
+        other = ContactMethod.objects.create(user=make_user(), kind="discord", value="someone")
+
+        response = self.client.delete(f"/api/me/contact-methods/{other.id}/")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(ContactMethod.objects.filter(pk=other.pk).exists())
