@@ -1,12 +1,14 @@
 from django.db.models import Q
 from rest_framework import generics
 
+from analytics.models import FunnelEvent
+
 from .queries import browsable_by, with_details
 from .serializers import OpportunitySerializer
 
 
-class OpportunityListView(generics.ListAPIView):
-    """Browse active opportunities.
+class OpportunityListView(generics.ListCreateAPIView):
+    """Browse active opportunities (GET) or post a new one (POST).
 
     Query parameters: ``q`` (searches title, description, role, and skill
     names), ``event``, ``role``, and ``skill`` (slugs), and ``type``.
@@ -35,3 +37,9 @@ class OpportunityListView(generics.ListAPIView):
             queryset = queryset.filter(opportunity_type=opportunity_type)
 
         return with_details(queryset.distinct().order_by("-created_at"))
+
+    def perform_create(self, serializer):
+        opportunity = serializer.save()
+        FunnelEvent.record(
+            FunnelEvent.Type.OPPORTUNITY_CREATED, user=self.request.user, opportunity=opportunity
+        )
