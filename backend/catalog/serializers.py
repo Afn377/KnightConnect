@@ -10,3 +10,8 @@ class CatalogSlugField(serializers.SlugRelatedField):
 
     def to_representation(self, obj):
         return {"slug": obj.slug, "name": obj.name}
+
+
+class CatalogEntrySerializer(serializers.Serializer):
+    slug = serializers.SlugField(read_only=True)
+    name = serializers.CharField(read_only=True)
