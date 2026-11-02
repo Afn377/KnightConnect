@@ -1,4 +1,4 @@
-from catalog.models import Role, Skill
+from catalog.models import Interest, Role, Skill
 from core.testing import APITestCase, make_user
 
 
@@ -36,6 +36,26 @@ class RoleListTests(APITestCase):
                 {"slug": "backend-developer", "name": "Backend developer"},
                 {"slug": "frontend-developer", "name": "Frontend developer"},
             ],
+        )
+
+    def test_requires_authentication(self):
+        self.assertEqual(self.client.get(self.url).status_code, 401)
+
+
+class InterestListTests(APITestCase):
+    url = "/api/interests/"
+
+    def test_lists_all_interests_alphabetically(self):
+        Interest.objects.create(name="Fintech")
+        Interest.objects.create(name="Climate")
+        self.login(make_user())
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            [{"slug": "climate", "name": "Climate"}, {"slug": "fintech", "name": "Fintech"}],
         )
 
     def test_requires_authentication(self):
