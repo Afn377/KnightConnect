@@ -117,3 +117,12 @@ def decline_request(connection_request, *, actor):
         event_type=FunnelEvent.Type.REQUEST_DECLINED,
         actor=actor,
     )
+
+
+def cancel_request(connection_request, *, actor):
+    return _resolve_pending(
+        connection_request,
+        status=ConnectionRequest.Status.CANCELLED,
+        event_type=FunnelEvent.Type.REQUEST_CANCELLED,
+        actor=actor,
+    )

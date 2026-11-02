@@ -7,7 +7,7 @@ from core.throttles import ScopedRateThrottle
 
 from .models import ConnectionRequest
 from .serializers import ConnectionRequestSerializer, SendRequestSerializer
-from .services import accept_request, decline_request, send_request
+from .services import accept_request, cancel_request, decline_request, send_request
 
 
 def requests_involving(user):
@@ -91,4 +91,12 @@ class AcceptRequestView(RespondToRequestView):
 class DeclineRequestView(RespondToRequestView):
     def post(self, request, *args, **kwargs):
         connection_request = decline_request(self.get_request_for_action(), actor=request.user)
+        return self.respond(connection_request)
+
+
+class CancelRequestView(RespondToRequestView):
+    allowed_party = "sender"
+
+    def post(self, request, *args, **kwargs):
+        connection_request = cancel_request(self.get_request_for_action(), actor=request.user)
         return self.respond(connection_request)

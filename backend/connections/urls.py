@@ -7,4 +7,5 @@ urlpatterns = [
     path("requests/<uuid:pk>/", views.ConnectionRequestDetailView.as_view(), name="request-detail"),
     path("requests/<uuid:pk>/accept/", views.AcceptRequestView.as_view(), name="request-accept"),
     path("requests/<uuid:pk>/decline/", views.DeclineRequestView.as_view(), name="request-decline"),
+    path("requests/<uuid:pk>/cancel/", views.CancelRequestView.as_view(), name="request-cancel"),
 ]
