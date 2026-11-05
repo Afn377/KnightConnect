@@ -5,7 +5,8 @@ Matching runs in three steps:
 1. Required filters remove pairings that can't work: missing a required
    skill, no overlapping availability, inactive or blocked accounts, and
    students already pending or accepted on the opportunity.
-2. A weighted score ranks what remains using preferred skills, role fit,
+2. A weighted score ranks what remains using skills (required ones count
+   double, scaled by proficiency), role fit,
    availability overlap, shared interests, and commitment closeness
    (weights in settings.MATCHING_WEIGHTS).
 3. Each factor that contributed becomes a human-readable explanation.
@@ -23,6 +24,11 @@ from opportunities.models import OpportunitySkill
 from opportunities.queries import browsable_by, with_details
 
 LIVE_STATUSES = [ConnectionRequest.Status.PENDING, ConnectionRequest.Status.ACCEPTED]
+
+# A required skill counts this many times as much as a preferred one in the skill score.
+REQUIRED_SKILL_WEIGHT = 2
+PREFERRED_SKILL_WEIGHT = 1
+PROFICIENCY_VALUE = {"beginner": 0.6, "intermediate": 0.8, "advanced": 1.0}
 
 
 @dataclass(frozen=True)
@@ -56,6 +62,7 @@ class Requirements:
 @dataclass
 class Profile:
     skills: dict
+    proficiency: dict
     roles: set
     interests: set
     availability: set
@@ -83,6 +90,7 @@ def requirements_for(opportunity):
 def profile_for(user):
     return Profile(
         skills={us.skill_id: us.skill.name for us in user.user_skills.all()},
+        proficiency={us.skill_id: us.proficiency for us in user.user_skills.all()},
         roles={r.pk for r in user.preferred_roles.all()},
         interests={i.pk for i in user.interests.all()},
         availability=set(user.availability or []),
@@ -124,11 +132,15 @@ def score(requirements, profile):
         if skill_id in requirements.required_skills or skill_id in requirements.preferred_skills
     }
     skill_label = f"{', '.join(sorted(matched_skills.values()))} experience" if matched_skills else ""
-    if requirements.preferred_skills:
-        matched_preferred = set(profile.skills) & set(requirements.preferred_skills)
-        parts.append(("skills", weights["skills"], len(matched_preferred) / len(requirements.preferred_skills), skill_label))
-    elif matched_skills:
-        parts.append(("skills", 0, 0, skill_label))
+    skill_weights = {skill_id: REQUIRED_SKILL_WEIGHT for skill_id in requirements.required_skills}
+    skill_weights.update({skill_id: PREFERRED_SKILL_WEIGHT for skill_id in requirements.preferred_skills})
+    if skill_weights:
+        earned = sum(
+            weight * PROFICIENCY_VALUE.get(profile.proficiency.get(skill_id), 0)
+            for skill_id, weight in skill_weights.items()
+            if skill_id in profile.skills
+        )
+        parts.append(("skills", weights["skills"], earned / sum(skill_weights.values()), skill_label))
 
     if requirements.open_roles:
         fitting = [name for role_id, name in requirements.open_roles.items() if role_id in profile.roles]
