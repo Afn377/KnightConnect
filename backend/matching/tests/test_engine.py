@@ -305,3 +305,61 @@ class CommitmentScoringTests(MatchingFixtures, TestCase):
         labels = [f.label for f in rank_candidates(partial_post)[0].factors]
 
         self.assertIn("Can commit to the full event", labels)
+
+
+class EventAvailabilityScoringTests(MatchingFixtures, TestCase):
+    def setUp(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from core.testing import make_event
+
+        self.make_catalog()
+        eastern = ZoneInfo("America/New_York")
+        self.event = make_event(
+            name="HackRU Spring",
+            starts_at=datetime(2027, 3, 28, 17, tzinfo=eastern),
+            ends_at=datetime(2027, 3, 30, 15, tzinfo=eastern),
+            recruiting_ends_at=datetime(2027, 3, 28, 12, tzinfo=eastern),
+        )
+
+    def student_at_event(self, full_event=True, windows=()):
+        from accounts.models import EventInterest
+
+        student = self.make_student(availability=[])
+        EventInterest.objects.create(user=student, event=self.event, full_event=full_event, windows=list(windows))
+        return student
+
+    def post(self, windows=()):
+        from opportunities.models import Opportunity
+
+        opportunity = make_opportunity(event=self.event, availability=[], commitment="partial", event_availability=list(windows))
+        Opportunity.objects.filter(pk=opportunity.pk).update(expires_at=timezone.now() + timedelta(days=3))
+        opportunity.refresh_from_db()
+        return opportunity
+
+    def test_ranks_by_overlap_with_the_posts_event_days(self):
+        opportunity = self.post([{"date": "2027-03-29", "start": "10:00", "end": "18:00"}])
+        everywhere = self.student_at_event(full_event=True)
+        morning = self.student_at_event(False, [{"date": "2027-03-29", "start": "09:00", "end": "12:00"}])
+        wrong_day = self.student_at_event(False, [{"date": "2027-03-28", "start": None, "end": None}])
+        unknown = self.make_student(availability=[])
+
+        matches = rank_candidates(opportunity)
+        by_student = {match.candidate: match for match in matches}
+
+        self.assertNotIn(wrong_day, by_student)
+        self.assertEqual([match.candidate for match in matches], [everywhere, morning, unknown])
+        self.assertIn("Available for all your event days", [f.label for f in by_student[everywhere].factors])
+        self.assertIn("Available Mar 29", [f.label for f in by_student[morning].factors])
+
+    def test_full_event_availability_when_the_post_lists_no_days(self):
+        opportunity = self.post()
+        full = self.student_at_event(full_event=True)
+        part = self.student_at_event(False, [{"date": "2027-03-29", "start": None, "end": None}])
+
+        matches = rank_candidates(opportunity)
+        by_student = {match.candidate: match for match in matches}
+
+        self.assertEqual([match.candidate for match in matches], [full, part])
+        self.assertIn("Available for the full event", [f.label for f in by_student[full].factors])
