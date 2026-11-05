@@ -6,8 +6,7 @@
 | --- | --- | --- |
 | Han Wang | @doublehan2023 | |
 | Soraya Mosavi | SorayaM0 | |
-|  |  |  |
-|  |  |  |
+| S M Afnan Haider | Afn377 | Backend |
 
 ## Backend
 
@@ -25,8 +24,16 @@ source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 python manage.py migrate
+python manage.py seed_catalog
 python manage.py createsuperuser
 python manage.py runserver
+```
+
+`seed_catalog` loads the starter skills, roles, and interests from
+`catalog/seed_data.py` and is safe to rerun. To add or update an event:
+
+```bash
+python manage.py seed_catalog --event "HackRU Spring 2027" --starts 2027-04-10T10:00:00-04:00 --ends 2027-04-11T14:00:00-04:00
 ```
 
 The API is served at `http://localhost:8000/api/` (health check at
@@ -38,8 +45,23 @@ To use PostgreSQL locally or Neon, set `DATABASE_URL` in `backend/.env`.
 
 ```bash
 cd backend
-python manage.py test
+DJANGO_DEBUG=true python manage.py test
 ```
+
+GitHub Actions runs the suite (and a missing-migration check) on every
+push to `main` and `afnan` and on pull requests.
+
+### Scheduled jobs
+
+Opportunities past their expiry and accounts past their 3-day recovery
+period need a periodic job. Either:
+
+- call `GET /api/internal/maintenance/` with `Authorization: Bearer $CRON_SECRET`
+  (Vercel Cron sends this header automatically when `CRON_SECRET` is set), or
+- run `python manage.py expire_opportunities` from any scheduler to handle
+  expiry alone.
+
+Running it hourly is enough for the pilot.
 
 ### API
 
@@ -63,8 +85,9 @@ conflicts, and 429 when rate limited.
 | GET, POST | `/me/contact-methods/` | List or add contact methods |
 | PATCH, DELETE | `/me/contact-methods/{id}/` | Edit or remove a contact method |
 | GET | `/users/{id}/` | Another student's public profile |
-| GET | `/skills/`, `/roles/`, `/interests/`, `/events/` | Catalog lists |
-| GET, POST | `/opportunities/` | Browse (`q`, `event`, `role`, `skill`, `type`) or post an opportunity |
+| GET | `/skills/`, `/roles/`, `/interests/` | Catalog lists (`search`) |
+| GET | `/events/` | Active events that haven't ended |
+| GET, POST | `/opportunities/` | Browse (`q`, `event`, `role`, `skill`, `interest`, `type`, `commitment`) or post an opportunity |
 | GET | `/opportunities/mine/` | Own opportunities (`status`) |
 | GET, PATCH | `/opportunities/{id}/` | View, or edit as the owner |
 | POST | `/opportunities/{id}/close/` | Close early as the owner |
@@ -78,6 +101,7 @@ conflicts, and 429 when rate limited.
 | DELETE | `/blocks/{user_id}/` | Unblock |
 | POST | `/reports/` | Report a user |
 | POST | `/analytics/track/` | Record `opportunity_viewed` or `recommendation_viewed` |
+| GET | `/analytics/funnel/` | Staff only: funnel counts (`start`, `end` as YYYY-MM-DD) |
 | GET, POST | `/internal/maintenance/` | Scheduled housekeeping; requires `Authorization: Bearer $CRON_SECRET` |
 
 ### Apps
