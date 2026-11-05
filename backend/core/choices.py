@@ -4,16 +4,10 @@ from django.db import models
 
 
 class Commitment(models.TextChoices):
-    """Expected time commitment.
+    """How much of an event (or project) a student can commit to, as on the posting form."""
 
-    Ordered from lightest to heaviest so matching can compare levels by
-    their position in ``Commitment.values``.
-    """
-
-    LIGHT = "light", "Light (under 5 hrs/week)"
-    MODERATE = "moderate", "Moderate (5-10 hrs/week)"
-    HEAVY = "heavy", "Heavy (10+ hrs/week)"
-    FULL_EVENT = "full_event", "Full event (e.g. entire hackathon weekend)"
+    PARTIAL = "partial", "Partial availability"
+    FULL = "full", "Full commitment"
 
 
 class AvailabilitySlot(models.TextChoices):

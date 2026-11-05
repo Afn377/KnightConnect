@@ -7,7 +7,7 @@ Matching runs in three steps:
    students already pending or accepted on the opportunity.
 2. A weighted score ranks what remains using skills (required ones count
    double, scaled by proficiency), role fit, interest in the event,
-   availability overlap, shared interests, and commitment closeness
+   availability overlap, shared interests, and commitment fit
    (weights in settings.MATCHING_WEIGHTS).
 3. Each factor that contributed becomes a human-readable explanation.
 """
@@ -166,10 +166,12 @@ def score(requirements, profile):
         parts.append(("interests", weights["interests"], len(shared) / len(requirements.interests), label))
 
     if requirements.commitment and profile.commitment:
-        order = Commitment.values
-        distance = abs(order.index(requirements.commitment) - order.index(profile.commitment))
-        value = max(0.0, 1 - distance / (len(order) - 1))
-        label = "Same commitment level" if distance == 0 else ("Similar commitment level" if distance == 1 else "")
+        if profile.commitment == requirements.commitment:
+            value, label = 1.0, "Same commitment level"
+        elif profile.commitment == Commitment.FULL:
+            value, label = 1.0, "Can commit to the full event"
+        else:
+            value, label = 0.25, ""
         parts.append(("commitment", weights["commitment"], value, label))
 
     total_weight = sum(weight for _, weight, _, _ in parts)
