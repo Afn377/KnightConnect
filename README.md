@@ -29,6 +29,9 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
+Profile pictures are stored in `backend/media/` locally. In production set the
+`R2_*` variables from `.env.example` to store them in Cloudflare R2.
+
 `seed_catalog` loads the starter skills, roles, and interests from
 `catalog/seed_data.py` and is safe to rerun. To add or update an event:
 
@@ -80,20 +83,23 @@ conflicts, and 429 when rate limited.
 | POST | `/auth/request-code/` | Email a 6-digit sign-in code to a Rutgers address (public) |
 | POST | `/auth/verify-code/` | Sign in with the code; creates the account or restores one pending deletion (public) |
 | POST | `/auth/logout/` | Sign out |
-| GET, PATCH | `/me/` | Own profile |
+| GET, PATCH | `/me/` | Own profile, including major, year, interested events and availability for each |
+| POST, DELETE | `/me/avatar/` | Upload (multipart `image`) or remove the profile picture |
 | DELETE | `/me/` | Schedule account deletion after a 3-day recovery period |
 | GET, POST | `/me/contact-methods/` | List or add contact methods |
 | PATCH, DELETE | `/me/contact-methods/{id}/` | Edit or remove a contact method |
 | GET | `/users/{id}/` | Another student's public profile |
-| GET | `/skills/`, `/roles/`, `/interests/` | Catalog lists (`search`) |
-| GET | `/events/` | Active events that haven't ended |
-| GET, POST | `/opportunities/` | Browse (`q`, `event`, `role`, `skill`, `interest`, `type`, `commitment`) or post an opportunity |
-| GET | `/opportunities/mine/` | Own opportunities (`status`) |
-| GET, PATCH | `/opportunities/{id}/` | View, or edit as the owner |
-| POST | `/opportunities/{id}/close/` | Close early as the owner |
+| GET, POST | `/skills/`, `/roles/`, `/interests/` | Catalog lists (`search`), or add an entry by name (returns the existing one if it matches) |
+| GET | `/events/` | Active events that haven't ended, with location and status (`status`) |
+| GET, POST | `/opportunities/` | Browse with a `match` for each card (`q`, `event`, `role`, `skill`, `interest`, `type`, `commitment`, `location`, `status`, `sort=best_match\|newest`), or post (`draft: true` saves a draft) |
+| GET | `/opportunities/mine/` | Own posts with tab counts (`status=active\|closed\|expired\|draft`) |
+| GET, PATCH, DELETE | `/opportunities/{id}/` | View; as the owner, edit or delete |
+| POST | `/opportunities/{id}/publish/` | Publish a draft |
+| POST | `/opportunities/{id}/close/`, `/reopen/` | Close recruiting early (pending requests stay reviewable) or reopen before the deadline |
+| GET | `/opportunities/{id}/team/` | Confirmed team, for the owner and members |
 | GET | `/opportunities/{id}/matches/` | Ranked candidates for the owner |
 | GET | `/recommendations/` | Ranked opportunities for the signed-in student |
-| GET, POST | `/requests/` | List (`box`, `status`) or send a join request or invite |
+| GET, POST | `/requests/` | List with tab counts (`box`, `status` comma-separated, `opportunity`) or send a join request or invite |
 | GET | `/requests/{id}/` | View a request; includes contact details once accepted |
 | POST | `/requests/{id}/accept/`, `/decline/`, `/cancel/` | Respond to or withdraw a request |
 | POST | `/requests/{id}/feedback/` | Rate whether an accepted connection helped |
