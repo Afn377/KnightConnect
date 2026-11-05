@@ -150,7 +150,7 @@ class PublicProfileView(generics.RetrieveAPIView):
 
 
 class AvatarView(APIView):
-    """Upload (POST, multipart field ``image``) the signed-in user's profile picture."""
+    """Upload (POST, multipart field ``image``) or remove (DELETE) the signed-in user's profile picture."""
 
     parser_classes = [MultiPartParser, FormParser]
 
@@ -169,3 +169,9 @@ class AvatarView(APIView):
         if previous:
             user.avatar.storage.delete(previous)
         return Response({"avatar_url": MeSerializer(user, context={"request": request}).data["avatar_url"]})
+
+    def delete(self, request):
+        user = request.user
+        if user.avatar:
+            user.avatar.delete(save=True)
+        return Response(status=status.HTTP_204_NO_CONTENT)
