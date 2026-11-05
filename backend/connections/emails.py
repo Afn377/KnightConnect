@@ -12,7 +12,7 @@ def _describe(user):
 
 def send_connection_accepted_emails(connection_request):
     """Tell both participants they're connected and how to reach each other."""
-    title = connection_request.opportunity.title
+    title = connection_request.opportunity_title or connection_request.opportunity.title
     pairs = (
         (connection_request.sender, connection_request.recipient),
         (connection_request.recipient, connection_request.sender),

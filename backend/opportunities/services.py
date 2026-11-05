@@ -54,3 +54,16 @@ def publish_opportunity(opportunity, *, actor):
     opportunity.save(update_fields=["status", "published_at", "updated_at"])
     FunnelEvent.record(FunnelEvent.Type.OPPORTUNITY_CREATED, user=actor, opportunity=opportunity)
     return opportunity
+
+
+@transaction.atomic
+def delete_opportunity(opportunity):
+    """Delete a post and its pending requests.
+
+    Other requests (accepted connections and history) are kept; they keep
+    the post title they were made for.
+    """
+    requests = opportunity.connection_requests.all()
+    requests.filter(status=ConnectionRequest.Status.PENDING).delete()
+    requests.filter(opportunity_title="").update(opportunity_title=opportunity.title)
+    opportunity.delete()

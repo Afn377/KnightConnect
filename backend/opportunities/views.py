@@ -1,5 +1,5 @@
 from django.db.models import Q
-from rest_framework import generics
+from rest_framework import generics, status
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
@@ -11,7 +11,7 @@ from core.exceptions import Conflict
 from .models import Opportunity
 from .queries import browsable_by, viewable_by, with_details
 from .serializers import OpportunitySerializer
-from .services import close_opportunity, publish_opportunity
+from .services import close_opportunity, delete_opportunity, publish_opportunity
 
 
 class OpportunityListView(generics.ListCreateAPIView):
@@ -63,10 +63,10 @@ class OpportunityListView(generics.ListCreateAPIView):
 
 
 class OpportunityDetailView(generics.RetrieveUpdateAPIView):
-    """View an opportunity (GET) or, as its owner, edit it while it is open (PATCH)."""
+    """View an opportunity (GET); as its owner, edit it while it is open (PATCH) or delete it (DELETE)."""
 
     serializer_class = OpportunitySerializer
-    http_method_names = ["get", "patch", "head", "options"]
+    http_method_names = ["get", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
         return with_details(viewable_by(self.request.user))
@@ -78,6 +78,13 @@ class OpportunityDetailView(generics.RetrieveUpdateAPIView):
         if opportunity.status != Opportunity.Status.DRAFT and not opportunity.is_active:
             raise Conflict("Closed or expired opportunities can't be edited.")
         return super().update(request, *args, **kwargs)
+
+    def delete(self, request, *args, **kwargs):
+        opportunity = self.get_object()
+        if opportunity.owner_id != request.user.id:
+            raise PermissionDenied("Only the owner can delete this opportunity.")
+        delete_opportunity(opportunity)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class OpportunityCloseView(generics.GenericAPIView):
@@ -107,8 +114,8 @@ class MyOpportunitiesView(generics.ListAPIView):
 
     def get_queryset(self):
         queryset = Opportunity.objects.filter(owner=self.request.user)
-        if status := self.request.query_params.get("status"):
-            queryset = queryset.filter(status=status)
+        if status_filter := self.request.query_params.get("status"):
+            queryset = queryset.filter(status=status_filter)
         return with_details(queryset.order_by("-created_at"))
 
 

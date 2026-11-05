@@ -23,7 +23,7 @@ class ConnectionRequestSerializer(serializers.ModelSerializer):
     request has been accepted.
     """
 
-    opportunity = RequestOpportunitySerializer(read_only=True)
+    opportunity = serializers.SerializerMethodField()
     role = CatalogSlugField(source="opportunity_role.role", read_only=True, default=None)
     sender = OwnerSerializer(read_only=True)
     recipient = OwnerSerializer(read_only=True)
@@ -49,6 +49,11 @@ class ConnectionRequestSerializer(serializers.ModelSerializer):
             "responded_at",
         ]
         read_only_fields = fields
+
+    def get_opportunity(self, obj):
+        if obj.opportunity is None:
+            return {"id": None, "title": obj.opportunity_title, "status": "deleted"}
+        return RequestOpportunitySerializer(obj.opportunity).data
 
     def _viewer(self):
         return self.context["request"].user
