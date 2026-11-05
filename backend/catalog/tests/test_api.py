@@ -100,3 +100,31 @@ class EventListTests(APITestCase):
 
     def test_requires_authentication(self):
         self.assertEqual(self.client.get(self.url).status_code, 401)
+
+
+class CatalogSearchTests(APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.login(make_user())
+
+    def names(self, url, search):
+        response = self.client.get(url, {"search": search})
+        self.assertEqual(response.status_code, 200)
+        return [item["name"] for item in response.json()]
+
+    def test_searches_interests_by_name(self):
+        Interest.objects.create(name="Fintech")
+        Interest.objects.create(name="Climate tech")
+        Interest.objects.create(name="Gaming")
+
+        self.assertEqual(self.names("/api/interests/", "TECH"), ["Climate tech", "Fintech"])
+
+    def test_searches_skills_and_roles_by_name(self):
+        Skill.objects.create(name="React")
+        Skill.objects.create(name="React Native")
+        Skill.objects.create(name="Python")
+        Role.objects.create(name="Backend developer")
+        Role.objects.create(name="Designer")
+
+        self.assertEqual(self.names("/api/skills/", "react"), ["React", "React Native"])
+        self.assertEqual(self.names("/api/roles/", "dev"), ["Backend developer"])
