@@ -151,6 +151,22 @@ class Opportunity(UUIDModel, TimeStampedModel):
             and self.expires_at > timezone.now()
         )
 
+    @property
+    def can_accept_requests(self):
+        """Whether pending requests can still be accepted.
+
+        True while recruiting, and also after the owner closes recruiting
+        early, until the original deadline passes.
+        """
+        if self.is_active:
+            return True
+        return (
+            self.status == self.Status.CLOSED
+            and self.close_reason == self.CloseReason.OWNER_CLOSED
+            and self.expires_at is not None
+            and self.expires_at > timezone.now()
+        )
+
     def close(self, reason, *, save=True):
         status = self.Status.EXPIRED if reason == self.CloseReason.EXPIRED else self.Status.CLOSED
         self.status = status
@@ -158,6 +174,12 @@ class Opportunity(UUIDModel, TimeStampedModel):
         self.closed_at = timezone.now()
         if save:
             self.save(update_fields=["status", "close_reason", "closed_at", "updated_at"])
+
+    def reopen(self):
+        self.status = self.Status.OPEN
+        self.close_reason = ""
+        self.closed_at = None
+        self.save(update_fields=["status", "close_reason", "closed_at", "updated_at"])
 
 
 class OpportunityRole(models.Model):

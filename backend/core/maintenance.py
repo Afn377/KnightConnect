@@ -5,7 +5,8 @@ from django.utils import timezone
 
 from accounts.models import LoginCode, User
 from opportunities.models import Opportunity
-from opportunities.services import close_opportunity
+from connections.models import ConnectionRequest
+from opportunities.services import close_opportunity, expire_pending_requests
 
 LOGIN_CODE_RETENTION = timedelta(days=1)
 
@@ -16,6 +17,10 @@ def expire_opportunities():
     for opportunity in due:
         close_opportunity(opportunity, Opportunity.CloseReason.EXPIRED)
         count += 1
+    # Posts the owner closed early keep pending requests reviewable only until the deadline.
+    expire_pending_requests(
+        ConnectionRequest.objects.filter(opportunity__expires_at__lte=timezone.now())
+    )
     return count
 
 

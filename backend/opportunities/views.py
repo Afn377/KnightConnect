@@ -1,4 +1,5 @@
 from django.db.models import Q
+from django.utils import timezone
 from rest_framework import generics, status
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -137,5 +138,29 @@ class OpportunityPublishView(generics.GenericAPIView):
             publish_opportunity(opportunity, actor=request.user)
         except DjangoValidationError as error:
             raise ValidationError(error.message_dict)
+        opportunity = with_details(Opportunity.objects.filter(pk=opportunity.pk)).get()
+        return Response(self.get_serializer(opportunity).data)
+
+
+class OpportunityReopenView(generics.GenericAPIView):
+    """Reopen recruiting on a post its owner closed early, before the deadline."""
+
+    serializer_class = OpportunitySerializer
+
+    def get_queryset(self):
+        return viewable_by(self.request.user)
+
+    def post(self, request, *args, **kwargs):
+        opportunity = self.get_object()
+        if opportunity.owner_id != request.user.id:
+            raise PermissionDenied("Only the owner can reopen this opportunity.")
+        if not (
+            opportunity.status == Opportunity.Status.CLOSED
+            and opportunity.close_reason == Opportunity.CloseReason.OWNER_CLOSED
+        ):
+            raise Conflict("Only posts you closed early can be reopened.")
+        if opportunity.expires_at <= timezone.now():
+            raise Conflict("The recruiting deadline has passed.")
+        opportunity.reopen()
         opportunity = with_details(Opportunity.objects.filter(pk=opportunity.pk)).get()
         return Response(self.get_serializer(opportunity).data)

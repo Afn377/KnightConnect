@@ -70,7 +70,7 @@ def accept_request(connection_request, *, actor):
 
         if connection_request.status != ConnectionRequest.Status.PENDING:
             raise Conflict("Only pending requests can be accepted.")
-        if not opportunity.is_active:
+        if not opportunity.can_accept_requests:
             raise Conflict("This opportunity is no longer recruiting.")
         role = connection_request.opportunity_role
         if role is not None and _accepted_count(role) >= role.slots:

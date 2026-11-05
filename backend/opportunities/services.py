@@ -6,17 +6,24 @@ from analytics.models import FunnelEvent
 from connections.models import ConnectionRequest
 
 
-@transaction.atomic
-def close_opportunity(opportunity, reason, *, actor=None):
-    """Close an opportunity and expire its pending connection requests.
-
-    Accepted connections are left untouched.
-    """
-    opportunity.close(reason)
+def expire_pending_requests(requests):
     now = timezone.now()
-    opportunity.connection_requests.filter(status=ConnectionRequest.Status.PENDING).update(
+    return requests.filter(status=ConnectionRequest.Status.PENDING).update(
         status=ConnectionRequest.Status.EXPIRED, responded_at=now, updated_at=now
     )
+
+
+@transaction.atomic
+def close_opportunity(opportunity, reason, *, actor=None):
+    """Close an opportunity to new requests.
+
+    When the owner closes recruiting early, pending requests stay open for
+    review until the deadline. For any other reason (team filled, expired,
+    moderation) pending requests expire. Accepted connections are kept.
+    """
+    opportunity.close(reason)
+    if reason != opportunity.CloseReason.OWNER_CLOSED:
+        expire_pending_requests(opportunity.connection_requests.all())
     FunnelEvent.record(
         FunnelEvent.Type.OPPORTUNITY_CLOSED, user=actor, opportunity=opportunity, reason=reason
     )
