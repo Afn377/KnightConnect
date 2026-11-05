@@ -1,4 +1,4 @@
-from catalog.models import Skill
+from catalog.models import Role, Skill
 from core.testing import APITestCase, make_user, throttle_rates
 
 
@@ -52,3 +52,16 @@ class SkillCreateTests(APITestCase):
         self.client.logout()
 
         self.assertEqual(self.post("Svelte").status_code, 401)
+
+
+class RoleCreateTests(APITestCase):
+    def test_adds_or_returns_a_role(self):
+        self.login(make_user())
+
+        created = self.client.post("/api/roles/", {"name": "Hardware hacker"}, format="json")
+        existing = self.client.post("/api/roles/", {"name": "hardware HACKER"}, format="json")
+
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.json(), {"slug": "hardware-hacker", "name": "Hardware hacker"})
+        self.assertEqual(existing.status_code, 200)
+        self.assertEqual(Role.objects.count(), 1)
