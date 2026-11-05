@@ -72,3 +72,15 @@ class MaintenanceTests(APITestCase):
     def test_disabled_when_no_secret_is_configured(self):
         self.assertEqual(self.run_job(secret="").status_code, 403)
         self.assertEqual(self.run_job(secret="anything").status_code, 403)
+
+
+    def test_expires_pending_requests_on_closed_posts_past_their_deadline(self):
+        closed = make_opportunity(expires_at=timezone.now() + timedelta(days=1))
+        pending = ConnectionRequest.objects.create(opportunity=closed, kind="join", sender=make_user(), recipient=closed.owner)
+        closed.close(Opportunity.CloseReason.OWNER_CLOSED)
+        Opportunity.objects.filter(pk=closed.pk).update(expires_at=timezone.now() - timedelta(minutes=1))
+
+        self.run_job()
+
+        pending.refresh_from_db()
+        self.assertEqual(pending.status, "expired")

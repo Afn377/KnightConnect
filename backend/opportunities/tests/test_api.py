@@ -437,7 +437,7 @@ class OpportunityCloseTests(APITestCase):
         self.assertEqual(self.opportunity.status, "closed")
         self.assertEqual(self.opportunity.close_reason, "owner_closed")
 
-    def test_expires_pending_requests_but_keeps_accepted_ones(self):
+    def test_keeps_pending_requests_reviewable(self):
         pending = ConnectionRequest.objects.create(opportunity=self.opportunity, kind="join", sender=make_user(), recipient=self.owner)
         accepted = ConnectionRequest.objects.create(
             opportunity=self.opportunity, kind="join", sender=make_user(), recipient=self.owner, status="accepted"
@@ -447,9 +447,24 @@ class OpportunityCloseTests(APITestCase):
 
         pending.refresh_from_db()
         accepted.refresh_from_db()
-        self.assertEqual(pending.status, "expired")
-        self.assertIsNotNone(pending.responded_at)
+        self.assertEqual(pending.status, "pending")
         self.assertEqual(accepted.status, "accepted")
+
+    def test_owner_can_still_accept_pending_requests_after_closing(self):
+        pending = ConnectionRequest.objects.create(opportunity=self.opportunity, kind="join", sender=make_user(), recipient=self.owner)
+        self.close()
+
+        response = self.client.post(f"/api/requests/{pending.id}/accept/")
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_closed_post_takes_no_new_requests(self):
+        self.close()
+        self.login(make_user())
+
+        response = self.client.post("/api/requests/", {"opportunity": str(self.opportunity.id)}, format="json")
+
+        self.assertEqual(response.status_code, 400)
 
     def test_records_funnel_event(self):
         from analytics.models import FunnelEvent
@@ -606,3 +621,43 @@ class OpportunityDesignFieldsTests(OpportunityFixtures, APITestCase):
         titles = {item["title"] for item in self.client.get(self.url, {"location": "virtual"}).json()["results"]}
 
         self.assertEqual(titles, {"Remote"})
+
+
+class OpportunityReopenTests(APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.owner = self.login(make_user())
+        self.opportunity = make_opportunity(owner=self.owner)
+
+    def reopen(self):
+        return self.client.post(f"/api/opportunities/{self.opportunity.id}/reopen/")
+
+    def test_owner_reopens_a_post_they_closed(self):
+        self.opportunity.close(Opportunity.CloseReason.OWNER_CLOSED)
+
+        response = self.reopen()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "open")
+        self.opportunity.refresh_from_db()
+        self.assertEqual((self.opportunity.status, self.opportunity.close_reason, self.opportunity.closed_at), ("open", "", None))
+
+    def test_open_post_cannot_be_reopened(self):
+        self.assertEqual(self.reopen().status_code, 409)
+
+    def test_cannot_reopen_after_the_recruiting_deadline(self):
+        self.opportunity.close(Opportunity.CloseReason.OWNER_CLOSED)
+        Opportunity.objects.filter(pk=self.opportunity.pk).update(expires_at=timezone.now() - timedelta(minutes=1))
+
+        self.assertEqual(self.reopen().status_code, 409)
+
+    def test_only_posts_closed_by_the_owner_can_be_reopened(self):
+        self.opportunity.close(Opportunity.CloseReason.MODERATION)
+
+        self.assertEqual(self.reopen().status_code, 409)
+
+    def test_non_owner_is_forbidden(self):
+        self.opportunity.close(Opportunity.CloseReason.OWNER_CLOSED)
+        ConnectionRequest.objects.create(opportunity=self.opportunity, kind="join", sender=self.login(make_user()), recipient=self.owner)
+
+        self.assertEqual(self.reopen().status_code, 403)
