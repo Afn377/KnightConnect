@@ -9,6 +9,7 @@ from rest_framework import serializers
 from accounts.models import User
 from catalog.models import Event, Interest, Role, Skill
 from catalog.serializers import CatalogSlugField
+from core.windows import normalize_windows
 from connections.models import ConnectionRequest
 
 from .models import Opportunity, OpportunityRole, OpportunitySkill
@@ -70,6 +71,7 @@ class OpportunitySerializer(serializers.ModelSerializer):
             "opportunity_type",
             "event",
             "availability",
+            "event_availability",
             "commitment",
             "interests",
             "roles",
@@ -140,6 +142,12 @@ class OpportunitySerializer(serializers.ModelSerializer):
         if len(slugs) != len(set(slugs)):
             raise serializers.ValidationError("Each role can only be listed once.")
         return roles
+
+    def validate_event_availability(self, windows):
+        try:
+            return normalize_windows(windows)
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(error.messages)
 
     def validate_team_capacity(self, capacity):
         if self.instance is not None and capacity < self.instance.confirmed_count:

@@ -10,6 +10,7 @@ from catalog.models import Event, Interest, Role, Skill
 from core.choices import Commitment, LocationType
 from core.models import TimeStampedModel, UUIDModel
 from core.validators import validate_availability_slots
+from core.windows import event_dates, validate_windows
 
 MAX_OPPORTUNITY_LIFETIME = timedelta(days=30)
 
@@ -75,6 +76,12 @@ class Opportunity(UUIDModel, TimeStampedModel):
     availability = models.JSONField(
         default=list, blank=True, validators=[validate_availability_slots]
     )
+    event_availability = models.JSONField(
+        default=list,
+        blank=True,
+        validators=[validate_windows],
+        help_text="When the team needs people during the event: day windows on event dates.",
+    )
     commitment = models.CharField(max_length=20, choices=Commitment.choices, blank=True)
     interests = models.ManyToManyField(Interest, blank=True, related_name="opportunities")
     skills = models.ManyToManyField(
@@ -131,6 +138,7 @@ class Opportunity(UUIDModel, TimeStampedModel):
 
     def clean(self):
         super().clean()
+        self._clean_event_availability()
         if self.expires_at is None:
             return
         now = timezone.now()
@@ -149,6 +157,18 @@ class Opportunity(UUIDModel, TimeStampedModel):
         if self.event_id and self.expires_at > self.event.recruiting_ends_at:
             raise ValidationError(
                 {"expires_at": "Expiry cannot be after the event's recruiting deadline."}
+            )
+
+    def _clean_event_availability(self):
+        if not self.event_availability:
+            return
+        if not self.event_id:
+            raise ValidationError({"event_availability": "Choose an event before adding event-day availability."})
+        allowed = {day.isoformat() for day in event_dates(self.event)}
+        outside = sorted({w["date"] for w in self.event_availability if w.get("date") not in allowed})
+        if outside:
+            raise ValidationError(
+                {"event_availability": f"These dates are outside the event: {', '.join(outside)}."}
             )
 
     @property
