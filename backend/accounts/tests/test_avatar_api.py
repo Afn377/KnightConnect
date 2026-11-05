@@ -95,3 +95,28 @@ class AvatarUploadTests(APITestCase):
         self.client.logout()
 
         self.assertEqual(self.upload(image_file()).status_code, 401)
+
+
+@override_settings(MEDIA_ROOT=MEDIA_ROOT)
+class AvatarRemoveTests(APITestCase):
+    url = "/api/me/avatar/"
+
+    def setUp(self):
+        super().setUp()
+        self.user = self.login(make_user())
+
+    def test_removes_the_picture_and_its_file(self):
+        self.client.post(self.url, {"image": image_file()}, format="multipart")
+        self.user.refresh_from_db()
+        name = self.user.avatar.name
+
+        response = self.client.delete(self.url)
+
+        self.assertEqual(response.status_code, 204)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.avatar)
+        self.assertFalse(self.user.avatar.storage.exists(name))
+        self.assertIsNone(self.client.get("/api/me/").json()["avatar_url"])
+
+    def test_removing_without_a_picture_is_harmless(self):
+        self.assertEqual(self.client.delete(self.url).status_code, 204)
