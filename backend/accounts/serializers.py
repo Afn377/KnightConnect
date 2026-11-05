@@ -3,7 +3,7 @@ from django.core.validators import validate_email
 from django.db import transaction
 from rest_framework import serializers
 
-from catalog.models import Interest, Role, Skill
+from catalog.models import Event, Interest, Role, Skill
 from catalog.serializers import CatalogSlugField
 
 from .models import ContactMethod, User, UserSkill
@@ -43,6 +43,7 @@ class MeSerializer(serializers.ModelSerializer):
 
     preferred_roles = CatalogSlugField(many=True, queryset=Role.objects.all(), required=False)
     interests = CatalogSlugField(many=True, queryset=Interest.objects.all(), required=False)
+    interested_events = CatalogSlugField(many=True, queryset=Event.objects.all(), required=False)
     skills = UserSkillSerializer(source="user_skills", many=True, required=False)
 
     class Meta:
@@ -59,6 +60,7 @@ class MeSerializer(serializers.ModelSerializer):
             "commitment",
             "preferred_roles",
             "interests",
+            "interested_events",
             "skills",
             "is_profile_complete",
             "created_at",
@@ -139,6 +141,7 @@ class PublicProfileSerializer(serializers.ModelSerializer):
 
     preferred_roles = CatalogSlugField(many=True, read_only=True)
     interests = CatalogSlugField(many=True, read_only=True)
+    interested_events = CatalogSlugField(many=True, read_only=True)
     skills = UserSkillSerializer(source="user_skills", many=True, read_only=True)
 
     class Meta:
@@ -154,6 +157,7 @@ class PublicProfileSerializer(serializers.ModelSerializer):
             "commitment",
             "preferred_roles",
             "interests",
+            "interested_events",
             "skills",
         ]
         read_only_fields = fields

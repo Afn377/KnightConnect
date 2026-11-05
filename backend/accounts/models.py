@@ -2,7 +2,7 @@ from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 
-from catalog.models import Interest, Role, Skill
+from catalog.models import Event, Interest, Role, Skill
 from core.choices import Commitment
 from core.models import TimeStampedModel, UUIDModel
 from core.validators import validate_availability_slots
@@ -50,6 +50,7 @@ class User(UUIDModel, AbstractBaseUser, PermissionsMixin, TimeStampedModel):
 
     preferred_roles = models.ManyToManyField(Role, blank=True, related_name="users")
     interests = models.ManyToManyField(Interest, blank=True, related_name="users")
+    interested_events = models.ManyToManyField(Event, blank=True, related_name="interested_users")
     skills = models.ManyToManyField(Skill, through="UserSkill", blank=True, related_name="users")
 
     is_active = models.BooleanField(default=True)
