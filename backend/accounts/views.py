@@ -142,5 +142,5 @@ class PublicProfileView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         return User.objects.visible_to(self.request.user).prefetch_related(
-            "preferred_roles", "interests", "interested_events", "user_skills__skill"
+            "preferred_roles", "interests", "interested_events", "event_interests__event", "user_skills__skill"
         )

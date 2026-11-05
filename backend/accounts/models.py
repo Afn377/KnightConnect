@@ -6,6 +6,7 @@ from catalog.models import Event, Interest, Role, Skill
 from core.choices import Commitment
 from core.models import TimeStampedModel, UUIDModel
 from core.validators import validate_availability_slots
+from core.windows import validate_windows
 
 from .managers import UserManager
 from .validators import validate_rutgers_email
@@ -50,7 +51,9 @@ class User(UUIDModel, AbstractBaseUser, PermissionsMixin, TimeStampedModel):
 
     preferred_roles = models.ManyToManyField(Role, blank=True, related_name="users")
     interests = models.ManyToManyField(Interest, blank=True, related_name="users")
-    interested_events = models.ManyToManyField(Event, blank=True, related_name="interested_users")
+    interested_events = models.ManyToManyField(
+        Event, through="EventInterest", blank=True, related_name="interested_users"
+    )
     skills = models.ManyToManyField(Skill, through="UserSkill", blank=True, related_name="users")
 
     is_active = models.BooleanField(default=True)
@@ -83,6 +86,29 @@ class User(UUIDModel, AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     @property
     def is_profile_complete(self):
         return bool(self.display_name and self.availability and self.commitment)
+
+
+class EventInterest(models.Model):
+    """An event a student plans to attend, and when they're available during it."""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="event_interests")
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="event_interests")
+    full_event = models.BooleanField(default=True)
+    windows = models.JSONField(
+        default=list,
+        blank=True,
+        validators=[validate_windows],
+        help_text="Day windows on event dates; used when full_event is false.",
+    )
+
+    class Meta:
+        ordering = ["event__starts_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "event"], name="accounts_eventinterest_unique"),
+        ]
+
+    def __str__(self):
+        return f"{self.user} at {self.event}"
 
 
 class UserSkill(models.Model):

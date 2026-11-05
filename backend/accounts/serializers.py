@@ -5,8 +5,9 @@ from rest_framework import serializers
 
 from catalog.models import Event, Interest, Role, Skill
 from catalog.serializers import CatalogSlugField
+from core.windows import event_dates, normalize_windows
 
-from .models import ContactMethod, User, UserSkill
+from .models import ContactMethod, EventInterest, User, UserSkill
 from .validators import validate_rutgers_email
 
 
@@ -38,12 +39,40 @@ class UserSkillSerializer(serializers.ModelSerializer):
         fields = ["skill", "proficiency"]
 
 
+class EventAvailabilitySerializer(serializers.ModelSerializer):
+    """One interested event and when the student is available during it."""
+
+    event = CatalogSlugField(queryset=Event.objects.all())
+    windows = serializers.JSONField(required=False)
+
+    class Meta:
+        model = EventInterest
+        fields = ["event", "full_event", "windows"]
+
+    def validate(self, attrs):
+        if attrs.get("full_event", True):
+            attrs["windows"] = []
+            return attrs
+        try:
+            windows = normalize_windows(attrs.get("windows", []))
+        except DjangoValidationError as error:
+            raise serializers.ValidationError({"windows": error.messages})
+        if not windows:
+            raise serializers.ValidationError({"windows": ["Add at least one day, or choose the full event."]})
+        allowed = {day.isoformat() for day in event_dates(attrs["event"])}
+        if any(window["date"] not in allowed for window in windows):
+            raise serializers.ValidationError({"windows": ["Choose dates during the event."]})
+        attrs["windows"] = windows
+        return attrs
+
+
 class MeSerializer(serializers.ModelSerializer):
     """The signed-in user's own profile."""
 
     preferred_roles = CatalogSlugField(many=True, queryset=Role.objects.all(), required=False)
     interests = CatalogSlugField(many=True, queryset=Interest.objects.all(), required=False)
     interested_events = CatalogSlugField(many=True, queryset=Event.objects.all(), required=False)
+    event_availability = EventAvailabilitySerializer(source="event_interests", many=True, required=False)
     skills = UserSkillSerializer(source="user_skills", many=True, required=False)
 
     class Meta:
@@ -61,6 +90,7 @@ class MeSerializer(serializers.ModelSerializer):
             "preferred_roles",
             "interests",
             "interested_events",
+            "event_availability",
             "skills",
             "is_profile_complete",
             "created_at",
@@ -73,10 +103,22 @@ class MeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Each skill can only be listed once.")
         return skills
 
+    def validate_event_availability(self, entries):
+        slugs = [entry["event"].slug for entry in entries]
+        if len(slugs) != len(set(slugs)):
+            raise serializers.ValidationError("Each event can only be listed once.")
+        return entries
+
     @transaction.atomic
     def update(self, instance, validated_data):
         skills = validated_data.pop("user_skills", None)
+        event_availability = validated_data.pop("event_interests", None)
+        if event_availability is not None:
+            validated_data.pop("interested_events", None)
         instance = super().update(instance, validated_data)
+        if event_availability is not None:
+            instance.event_interests.all().delete()
+            EventInterest.objects.bulk_create(EventInterest(user=instance, **entry) for entry in event_availability)
         if skills is not None:
             instance.user_skills.all().delete()
             UserSkill.objects.bulk_create(UserSkill(user=instance, **entry) for entry in skills)
@@ -142,6 +184,7 @@ class PublicProfileSerializer(serializers.ModelSerializer):
     preferred_roles = CatalogSlugField(many=True, read_only=True)
     interests = CatalogSlugField(many=True, read_only=True)
     interested_events = CatalogSlugField(many=True, read_only=True)
+    event_availability = EventAvailabilitySerializer(source="event_interests", many=True, read_only=True)
     skills = UserSkillSerializer(source="user_skills", many=True, read_only=True)
 
     class Meta:
@@ -158,6 +201,7 @@ class PublicProfileSerializer(serializers.ModelSerializer):
             "preferred_roles",
             "interests",
             "interested_events",
+            "event_availability",
             "skills",
         ]
         read_only_fields = fields
