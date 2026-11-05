@@ -505,3 +505,29 @@ class MyOpportunitiesTests(APITestCase):
         self.client.logout()
 
         self.assertEqual(self.client.get(self.url).status_code, 401)
+
+
+class OpportunityBrowseMoreFiltersTests(OpportunityFixtures, APITestCase):
+    url = "/api/opportunities/"
+
+    def setUp(self):
+        super().setUp()
+        self.make_catalog()
+        self.login(make_user())
+
+    def titles(self, **params):
+        response = self.client.get(self.url, params)
+        self.assertEqual(response.status_code, 200)
+        return {item["title"] for item in response.json()["results"]}
+
+    def test_filters_by_interest(self):
+        make_opportunity(title="AI project", interests=[self.ai])
+        make_opportunity(title="Other")
+
+        self.assertEqual(self.titles(interest="ai"), {"AI project"})
+
+    def test_filters_by_commitment(self):
+        make_opportunity(title="Weekend sprint", commitment="full_event")
+        make_opportunity(title="Side project", commitment="light")
+
+        self.assertEqual(self.titles(commitment="light"), {"Side project"})
