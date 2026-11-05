@@ -1,3 +1,4 @@
+from django.utils.text import slugify
 from rest_framework import serializers
 
 from .models import Event
@@ -25,3 +26,13 @@ class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ["slug", "name", "description", "starts_at", "ends_at", "recruiting_ends_at", "is_recruiting"]
+
+
+class CatalogEntryCreateSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=64)
+
+    def validate_name(self, name):
+        name = " ".join(name.split())
+        if not slugify(name):
+            raise serializers.ValidationError("Use at least one letter or number.")
+        return name
