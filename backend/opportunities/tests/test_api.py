@@ -552,3 +552,57 @@ class OpportunityBrowseEventStatusTests(APITestCase):
         titles = {item["title"] for item in self.client.get("/api/opportunities/", {"status": "upcoming"}).json()["results"]}
 
         self.assertEqual(titles, {"Before"})
+
+
+class OpportunityDesignFieldsTests(OpportunityFixtures, APITestCase):
+    url = "/api/opportunities/"
+
+    def setUp(self):
+        super().setUp()
+        self.make_catalog()
+        self.login(make_user())
+
+    def payload(self, **overrides):
+        data = {
+            "title": "HackRU Spring Teammates Needed",
+            "opportunity_type": "hackathon",
+            "commitment": "full_event",
+            "roles": [{"role": "backend-developer"}],
+            "interests": ["ai"],
+            "location_type": "virtual",
+            "project_ideas": "An AI study buddy",
+            "required_availability": "Available for the full HackRU weekend.",
+            "expires_at": (timezone.now() + timedelta(days=3)).isoformat(),
+        }
+        data.update(overrides)
+        return data
+
+    def test_creates_post_with_design_fields_and_no_description(self):
+        response = self.client.post(self.url, self.payload(), format="json")
+
+        self.assertEqual(response.status_code, 201, response.json())
+        body = response.json()
+        self.assertEqual(body["location_type"], "virtual")
+        self.assertEqual(body["project_ideas"], "An AI study buddy")
+        self.assertEqual(body["required_availability"], "Available for the full HackRU weekend.")
+        self.assertEqual(body["description"], "")
+        self.assertEqual(body["interests"], [{"slug": "ai", "name": "AI"}])
+
+    def test_location_defaults_to_in_person(self):
+        body = self.client.post(self.url, self.payload(location_type=None) | {"location_type": "in_person"}, format="json").json()
+        payload = self.payload()
+        del payload["location_type"]
+
+        self.assertEqual(self.client.post(self.url, payload, format="json").json()["location_type"], "in_person")
+        self.assertEqual(body["location_type"], "in_person")
+
+    def test_rejects_unknown_location(self):
+        self.assertEqual(self.client.post(self.url, self.payload(location_type="moon"), format="json").status_code, 400)
+
+    def test_browse_filters_by_location(self):
+        make_opportunity(title="Remote", location_type="virtual")
+        make_opportunity(title="On campus")
+
+        titles = {item["title"] for item in self.client.get(self.url, {"location": "virtual"}).json()["results"]}
+
+        self.assertEqual(titles, {"Remote"})
