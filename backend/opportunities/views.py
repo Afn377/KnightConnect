@@ -4,6 +4,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from analytics.models import FunnelEvent
+from catalog.models import Event
 from core.exceptions import Conflict
 
 from .models import Opportunity
@@ -17,7 +18,7 @@ class OpportunityListView(generics.ListCreateAPIView):
 
     Query parameters: ``q`` (searches title, description, role, and skill
     names), ``event``, ``role``, ``skill``, and ``interest`` (slugs),
-    ``type``, and ``commitment``.
+    ``type``, ``commitment``, and ``status`` (the event's: upcoming or ongoing).
     """
 
     serializer_class = OpportunitySerializer
@@ -45,6 +46,8 @@ class OpportunityListView(generics.ListCreateAPIView):
             queryset = queryset.filter(interests__slug=interest)
         if commitment := params.get("commitment"):
             queryset = queryset.filter(commitment=commitment)
+        if event_status := params.get("status"):
+            queryset = queryset.filter(event__in=Event.objects.with_status(event_status))
 
         return with_details(queryset.distinct().order_by("-created_at"))
 

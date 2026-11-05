@@ -22,10 +22,22 @@ class CatalogEntrySerializer(serializers.Serializer):
 
 class EventSerializer(serializers.ModelSerializer):
     is_recruiting = serializers.BooleanField(read_only=True)
+    status = serializers.CharField(read_only=True)
 
     class Meta:
         model = Event
-        fields = ["slug", "name", "description", "starts_at", "ends_at", "recruiting_ends_at", "is_recruiting"]
+        fields = [
+            "slug",
+            "name",
+            "description",
+            "location_type",
+            "venue",
+            "starts_at",
+            "ends_at",
+            "recruiting_ends_at",
+            "is_recruiting",
+            "status",
+        ]
 
 
 class CatalogEntryCreateSerializer(serializers.Serializer):

@@ -29,3 +29,9 @@ class AvailabilitySlot(models.TextChoices):
     WEEKEND_MORNING = "weekend_morning", "Weekend mornings"
     WEEKEND_AFTERNOON = "weekend_afternoon", "Weekend afternoons"
     WEEKEND_EVENING = "weekend_evening", "Weekend evenings"
+
+
+class LocationType(models.TextChoices):
+    IN_PERSON = "in_person", "In person"
+    VIRTUAL = "virtual", "Virtual"
+    HYBRID = "hybrid", "Hybrid"

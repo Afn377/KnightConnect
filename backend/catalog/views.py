@@ -61,10 +61,13 @@ class InterestListView(SearchableCatalogListView):
 
 
 class EventListView(generics.ListAPIView):
-    """Active events that have not ended yet, soonest first."""
+    """Active events that have not ended yet, soonest first. Optional ``status`` filter."""
 
     serializer_class = EventSerializer
     pagination_class = None
 
     def get_queryset(self):
-        return Event.objects.filter(is_active=True, ends_at__gt=timezone.now())
+        queryset = Event.objects.filter(is_active=True, ends_at__gt=timezone.now())
+        if status := self.request.query_params.get("status"):
+            queryset = queryset.with_status(status)
+        return queryset
