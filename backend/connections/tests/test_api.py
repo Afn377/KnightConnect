@@ -13,7 +13,7 @@ from safety.models import Block
 class RequestFixtures:
     def make_world(self):
         self.owner = make_user(display_name="Owner")
-        self.student = make_user(display_name="Student")
+        self.student = make_user(display_name="Student", major="Design", year="junior")
         self.opportunity = make_opportunity(owner=self.owner)
         self.backend = OpportunityRole.objects.create(
             opportunity=self.opportunity, role=Role.objects.create(name="Backend developer"), slots=1
@@ -56,8 +56,10 @@ class SendRequestTests(RequestFixtures, APITestCase):
         self.assertEqual(body["direction"], "outgoing")
         self.assertEqual(body["opportunity"], {"id": str(self.opportunity.id), "title": self.opportunity.title, "status": "open"})
         self.assertEqual(body["role"], {"slug": "backend-developer", "name": "Backend developer"})
-        self.assertEqual(body["sender"], {"id": str(self.student.id), "display_name": "Student"})
-        self.assertEqual(body["recipient"], {"id": str(self.owner.id), "display_name": "Owner"})
+        self.assertEqual(
+            body["sender"], {"id": str(self.student.id), "display_name": "Student", "major": "Design", "year": "junior"}
+        )
+        self.assertEqual(body["recipient"], {"id": str(self.owner.id), "display_name": "Owner", "major": "", "year": ""})
         self.assertIsNone(body["contact_methods"])
 
     def test_owner_sends_invite_to_candidate(self):

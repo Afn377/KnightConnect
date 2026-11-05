@@ -134,3 +134,26 @@ class MeUpdateTests(APITestCase):
         self.client.logout()
 
         self.assertEqual(self.patch({"bio": "x"}).status_code, 401)
+
+
+class MajorAndYearTests(APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.user = self.login(make_user())
+
+    def test_updates_major_and_year(self):
+        response = self.client.patch("/api/me/", {"major": "Computer Science", "year": "senior"}, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["major"], "Computer Science")
+        self.assertEqual(response.json()["year"], "senior")
+
+    def test_rejects_unknown_year(self):
+        self.assertEqual(self.client.patch("/api/me/", {"year": "super senior"}, format="json").status_code, 400)
+
+    def test_public_profile_shows_major_and_year(self):
+        other = make_user(major="Design", year="grad")
+
+        body = self.client.get(f"/api/users/{other.id}/").json()
+
+        self.assertEqual((body["major"], body["year"]), ("Design", "grad"))

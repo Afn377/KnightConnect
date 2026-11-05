@@ -36,7 +36,7 @@ class OpportunityBrowseTests(OpportunityFixtures, APITestCase):
 
     def test_lists_active_opportunities_with_details(self):
         event = make_event(name="HackRU Fall")
-        owner = make_user(display_name="Jane Doe")
+        owner = make_user(display_name="Jane Doe", major="Computer Science", year="senior")
         opportunity = make_opportunity(owner=owner, event=event, interests=[self.ai])
         role = OpportunityRole.objects.create(opportunity=opportunity, role=self.backend, slots=2, notes="Django")
         OpportunitySkill.objects.create(opportunity=opportunity, skill=self.python, requirement_type="required")
@@ -53,7 +53,10 @@ class OpportunityBrowseTests(OpportunityFixtures, APITestCase):
         self.assertEqual(item["description"], opportunity.description)
         self.assertEqual(item["opportunity_type"], "hackathon")
         self.assertEqual(item["event"], {"slug": "hackru-fall", "name": "HackRU Fall"})
-        self.assertEqual(item["owner"], {"id": str(owner.id), "display_name": "Jane Doe"})
+        self.assertEqual(
+            item["owner"],
+            {"id": str(owner.id), "display_name": "Jane Doe", "major": "Computer Science", "year": "senior"},
+        )
         self.assertEqual(item["availability"], opportunity.availability)
         self.assertEqual(item["commitment"], "full_event")
         self.assertEqual(item["interests"], [{"slug": "ai", "name": "AI"}])
