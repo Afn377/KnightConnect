@@ -10,7 +10,7 @@ from catalog.models import Event
 from core.exceptions import Conflict
 
 from .models import Opportunity
-from .queries import browsable_by, viewable_by, with_details
+from .queries import browsable_by, effective_status_filter, status_counts, viewable_by, with_details
 from .serializers import OpportunitySerializer
 from .services import close_opportunity, delete_opportunity, publish_opportunity
 
@@ -109,15 +109,27 @@ class OpportunityCloseView(generics.GenericAPIView):
 
 
 class MyOpportunitiesView(generics.ListAPIView):
-    """The signed-in user's own opportunities in any state. Optional ``status`` filter."""
+    """The signed-in user's own opportunities in any state, plus counts per tab.
+
+    Optional ``status``: active, closed, expired (including open posts past
+    their deadline), or draft.
+    """
 
     serializer_class = OpportunitySerializer
 
     def get_queryset(self):
         queryset = Opportunity.objects.filter(owner=self.request.user)
         if status_filter := self.request.query_params.get("status"):
-            queryset = queryset.filter(status=status_filter)
+            condition = effective_status_filter(status_filter)
+            if condition is None:
+                raise ValidationError({"status": ["Use active, closed, expired, or draft."]})
+            queryset = queryset.filter(condition)
         return with_details(queryset.order_by("-created_at"))
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        response.data["counts"] = status_counts(Opportunity.objects.filter(owner=request.user))
+        return response
 
 
 class OpportunityPublishView(generics.GenericAPIView):

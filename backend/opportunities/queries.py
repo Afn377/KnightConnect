@@ -14,7 +14,10 @@ def with_details(queryset):
         .order_by("role__name")
     )
     skills = OpportunitySkill.objects.select_related("skill").order_by("skill__name")
-    return queryset.select_related("owner", "event").prefetch_related(
+    return queryset.select_related("owner", "event").annotate(
+        pending_count=Count("connection_requests", filter=Q(connection_requests__status="pending"), distinct=True),
+        accepted_count=Count("connection_requests", filter=Q(connection_requests__status="accepted"), distinct=True),
+    ).prefetch_related(
         "interests",
         Prefetch("roles", queryset=roles),
         Prefetch("opportunity_skills", queryset=skills),
@@ -40,3 +43,22 @@ def viewable_by(user):
         .filter(Q(owner=user) | is_active | is_participant)
         .distinct()
     )
+
+
+def effective_status_filter(status):
+    """Filter for the Your posts tabs; "expired" includes open posts past their deadline."""
+    now = timezone.now()
+    filters = {
+        "active": Q(status=Opportunity.Status.OPEN, expires_at__gt=now),
+        "expired": Q(status=Opportunity.Status.EXPIRED) | Q(status=Opportunity.Status.OPEN, expires_at__lte=now),
+        "closed": Q(status=Opportunity.Status.CLOSED),
+        "draft": Q(status=Opportunity.Status.DRAFT),
+    }
+    return filters.get(status)
+
+
+def status_counts(queryset):
+    counts = {"all": queryset.count()}
+    for name in ("active", "closed", "expired", "draft"):
+        counts[name] = queryset.filter(effective_status_filter(name)).count()
+    return counts

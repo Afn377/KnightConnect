@@ -51,6 +51,8 @@ class OpportunitySerializer(serializers.ModelSerializer):
     roles = OpportunityRoleSerializer(many=True)
     skills = OpportunitySkillSerializer(source="opportunity_skills", many=True, required=False)
     is_owner = serializers.SerializerMethodField()
+    pending_requests = serializers.SerializerMethodField()
+    confirmed = serializers.SerializerMethodField()
     draft = serializers.BooleanField(
         write_only=True, required=False, help_text="On create, save as a private draft."
     )
@@ -78,6 +80,8 @@ class OpportunitySerializer(serializers.ModelSerializer):
             "skills",
             "status",
             "close_reason",
+            "pending_requests",
+            "confirmed",
             "expires_at",
             "draft_step",
             "draft",
@@ -103,6 +107,21 @@ class OpportunitySerializer(serializers.ModelSerializer):
             return getattr(self.instance, "status", None) == Opportunity.Status.DRAFT
         data = getattr(self, "initial_data", None) or {}
         return self.instance is None and str(data.get("draft", "")).lower() in {"true", "1"}
+
+    def _count(self, obj, attribute, status):
+        if hasattr(obj, attribute):
+            return getattr(obj, attribute)
+        return obj.connection_requests.filter(status=status).count() if obj.pk else 0
+
+    def get_pending_requests(self, obj):
+        """Pending requests on the post; only its owner sees this."""
+        if not self.get_is_owner(obj):
+            return None
+        return self._count(obj, "pending_count", "pending")
+
+    def get_confirmed(self, obj):
+        """Confirmed team members, including the owner."""
+        return 1 + self._count(obj, "accepted_count", "accepted")
 
     def get_is_owner(self, obj):
         request = self.context.get("request")
