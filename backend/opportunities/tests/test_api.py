@@ -534,3 +534,21 @@ class OpportunityBrowseMoreFiltersTests(OpportunityFixtures, APITestCase):
         make_opportunity(title="Side project", commitment="light")
 
         self.assertEqual(self.titles(commitment="light"), {"Side project"})
+
+
+class OpportunityBrowseEventStatusTests(APITestCase):
+    def test_filters_by_event_status(self):
+        now = timezone.now()
+        upcoming = make_event(name="Upcoming")
+        ongoing = make_event(
+            name="Ongoing", starts_at=now - timedelta(hours=1), ends_at=now + timedelta(days=1),
+            recruiting_ends_at=now + timedelta(hours=5),
+        )
+        make_opportunity(title="Before", event=upcoming)
+        make_opportunity(title="During", event=ongoing, expires_at=now + timedelta(hours=4))
+        make_opportunity(title="No event", opportunity_type="personal_project")
+        self.login(make_user())
+
+        titles = {item["title"] for item in self.client.get("/api/opportunities/", {"status": "upcoming"}).json()["results"]}
+
+        self.assertEqual(titles, {"Before"})

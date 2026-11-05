@@ -84,7 +84,10 @@ class EventListTests(APITestCase):
         self.assertEqual([event["slug"] for event in body], [sooner.slug, later.slug])
         self.assertEqual(
             set(body[0]),
-            {"slug", "name", "description", "starts_at", "ends_at", "recruiting_ends_at", "is_recruiting"},
+            {
+                "slug", "name", "description", "starts_at", "ends_at", "recruiting_ends_at", "is_recruiting",
+                "location_type", "venue", "status",
+            },
         )
         self.assertTrue(body[0]["is_recruiting"])
 
@@ -128,3 +131,34 @@ class CatalogSearchTests(APITestCase):
 
         self.assertEqual(self.names("/api/skills/", "react"), ["React", "React Native"])
         self.assertEqual(self.names("/api/roles/", "dev"), ["Backend developer"])
+
+
+class EventLocationAndStatusTests(APITestCase):
+    url = "/api/events/"
+
+    def setUp(self):
+        super().setUp()
+        self.login(make_user())
+        now = timezone.now()
+        self.upcoming = make_event(name="Upcoming", location_type="hybrid", venue="Rutgers University")
+        self.ongoing = make_event(
+            name="Ongoing", starts_at=now - timedelta(hours=1), ends_at=now + timedelta(hours=5),
+            recruiting_ends_at=now - timedelta(hours=1), location_type="virtual",
+        )
+
+    def test_reports_location_and_status(self):
+        body = {event["slug"]: event for event in self.client.get(self.url).json()}
+
+        self.assertEqual(body["upcoming"]["location_type"], "hybrid")
+        self.assertEqual(body["upcoming"]["venue"], "Rutgers University")
+        self.assertEqual(body["upcoming"]["status"], "upcoming")
+        self.assertEqual(body["ongoing"]["location_type"], "virtual")
+        self.assertEqual(body["ongoing"]["status"], "ongoing")
+
+    def test_location_defaults_to_in_person(self):
+        self.assertEqual(make_event().location_type, "in_person")
+
+    def test_filters_by_status(self):
+        slugs = [event["slug"] for event in self.client.get(self.url, {"status": "ongoing"}).json()]
+
+        self.assertEqual(slugs, ["ongoing"])
