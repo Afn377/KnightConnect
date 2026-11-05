@@ -55,7 +55,10 @@ class OpportunityBrowseTests(OpportunityFixtures, APITestCase):
         self.assertEqual(item["event"], {"slug": "hackru-fall", "name": "HackRU Fall"})
         self.assertEqual(
             item["owner"],
-            {"id": str(owner.id), "display_name": "Jane Doe", "major": "Computer Science", "year": "senior"},
+            {
+                "id": str(owner.id), "display_name": "Jane Doe", "major": "Computer Science", "year": "senior",
+                "avatar_url": None,
+            },
         )
         self.assertEqual(item["availability"], opportunity.availability)
         self.assertEqual(item["commitment"], "full")

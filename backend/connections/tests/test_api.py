@@ -57,9 +57,12 @@ class SendRequestTests(RequestFixtures, APITestCase):
         self.assertEqual(body["opportunity"], {"id": str(self.opportunity.id), "title": self.opportunity.title, "status": "open"})
         self.assertEqual(body["role"], {"slug": "backend-developer", "name": "Backend developer"})
         self.assertEqual(
-            body["sender"], {"id": str(self.student.id), "display_name": "Student", "major": "Design", "year": "junior"}
+            body["sender"], {
+                "id": str(self.student.id), "display_name": "Student", "major": "Design", "year": "junior",
+                "avatar_url": None,
+            }
         )
-        self.assertEqual(body["recipient"], {"id": str(self.owner.id), "display_name": "Owner", "major": "", "year": ""})
+        self.assertEqual(body["recipient"], {"id": str(self.owner.id), "display_name": "Owner", "major": "", "year": "", "avatar_url": None})
         self.assertIsNone(body["contact_methods"])
 
     def test_owner_sends_invite_to_candidate(self):

@@ -24,7 +24,7 @@ class BlockListTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(len(body), 1)
-        self.assertEqual(body[0]["user"], {"id": str(blocked.id), "display_name": "Annoying", "major": "", "year": ""})
+        self.assertEqual(body[0]["user"], {"id": str(blocked.id), "display_name": "Annoying", "major": "", "year": "", "avatar_url": None})
         self.assertEqual(parse_datetime(body[0]["created_at"]), block.created_at)
 
     def test_requires_authentication(self):
