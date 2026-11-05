@@ -9,6 +9,7 @@ from analytics.models import FunnelEvent
 from catalog.models import Event
 from connections.models import ConnectionRequest
 from core.exceptions import Conflict
+from matching.engine import describe_matches
 
 from .models import Opportunity
 from .queries import browsable_by, effective_status_filter, status_counts, viewable_by, with_details
@@ -16,8 +17,14 @@ from .serializers import OpportunitySerializer, TeamMemberSerializer
 from .services import close_opportunity, delete_opportunity, publish_opportunity
 
 
+SORTS = ("best_match", "newest")
+
+
 class OpportunityListView(generics.ListCreateAPIView):
     """Browse active opportunities (GET) or post a new one (POST).
+
+    Every card includes ``match`` for the viewer. ``sort`` is best_match
+    (default; ties newest first) or newest.
 
     Query parameters: ``q`` (searches title, description, role, and skill
     names), ``event``, ``role``, ``skill``, and ``interest`` (slugs),
@@ -55,6 +62,22 @@ class OpportunityListView(generics.ListCreateAPIView):
             queryset = queryset.filter(event__in=Event.objects.with_status(event_status))
 
         return with_details(queryset.distinct().order_by("-created_at"))
+
+    def list(self, request, *args, **kwargs):
+        sort = request.query_params.get("sort", "best_match")
+        if sort not in SORTS:
+            raise ValidationError({"sort": [f"Use one of: {', '.join(SORTS)}."]})
+        queryset = self.filter_queryset(self.get_queryset())
+
+        if sort == "best_match":
+            # Scoring happens in Python, so rank the whole result set before paging.
+            opportunities = describe_matches(list(queryset), request.user)
+            opportunities.sort(key=lambda o: o.match["score"] if o.match else -1, reverse=True)
+            page = self.paginate_queryset(opportunities)
+        else:
+            page = describe_matches(self.paginate_queryset(queryset), request.user)
+
+        return self.get_paginated_response(self.get_serializer(page, many=True).data)
 
     def perform_create(self, serializer):
         opportunity = serializer.save()

@@ -241,3 +241,24 @@ def rank_opportunities(student, *, limit=None):
 
     matches.sort(key=lambda match: match.score, reverse=True)
     return matches[:limit]
+
+
+def describe_matches(opportunities, viewer):
+    """Attach ``match`` (score, requirement check, explanations) to each opportunity for ``viewer``.
+
+    Unlike rank_opportunities this filters nothing out; it lets browse show
+    "Why you match" on every card. The viewer's own posts get ``None``.
+    """
+    profile = profile_for(_profile_prefetches(User.objects.filter(pk=viewer.pk)).get())
+    for opportunity in opportunities:
+        if opportunity.owner_id == viewer.id:
+            opportunity.match = None
+            continue
+        requirements = requirements_for(opportunity)
+        total, factors = score(requirements, profile)
+        opportunity.match = {
+            "score": total,
+            "meets_requirements": passes_required_filters(requirements, profile),
+            "explanations": [factor.as_dict() for factor in factors],
+        }
+    return opportunities

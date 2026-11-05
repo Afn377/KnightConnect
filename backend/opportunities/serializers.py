@@ -48,6 +48,7 @@ class OpportunitySerializer(serializers.ModelSerializer):
     pending_requests = serializers.SerializerMethodField()
     confirmed = serializers.SerializerMethodField()
     spots_remaining = serializers.SerializerMethodField()
+    match = serializers.SerializerMethodField()
     draft = serializers.BooleanField(
         write_only=True, required=False, help_text="On create, save as a private draft."
     )
@@ -73,6 +74,7 @@ class OpportunitySerializer(serializers.ModelSerializer):
             "interests",
             "roles",
             "skills",
+            "match",
             "status",
             "close_reason",
             "team_capacity",
@@ -119,6 +121,10 @@ class OpportunitySerializer(serializers.ModelSerializer):
     def get_confirmed(self, obj):
         """Confirmed team members, including the owner."""
         return 1 + self._count(obj, "accepted_count", "accepted")
+
+    def get_match(self, obj):
+        """Set by browse: how well the post fits the viewer and why."""
+        return getattr(obj, "match", None)
 
     def get_spots_remaining(self, obj):
         return max(0, obj.team_capacity - self.get_confirmed(obj))
