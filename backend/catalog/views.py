@@ -57,6 +57,7 @@ class RoleListView(SearchableCatalogListView):
 
 class InterestListView(SearchableCatalogListView):
     model = Interest
+    allow_create = True
 
 
 class EventListView(generics.ListAPIView):
