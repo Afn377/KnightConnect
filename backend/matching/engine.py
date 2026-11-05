@@ -20,6 +20,7 @@ from django.db.models import Q
 from accounts.models import User
 from connections.models import ConnectionRequest
 from core.choices import AvailabilitySlot, Commitment
+from core.windows import WHOLE_DAY, event_dates, window_ranges
 from opportunities.models import OpportunitySkill
 from opportunities.queries import browsable_by, with_details
 
@@ -58,6 +59,10 @@ class Requirements:
     availability: set
     commitment: str
     event: tuple = None
+    # Event-day windows the team needs ({date: [(start, end)]}); None when the post lists none.
+    event_windows: dict = None
+    # Every event date as a whole day, for full-event availability.
+    event_days: dict = None
 
 
 @dataclass
@@ -69,6 +74,11 @@ class Profile:
     availability: set
     commitment: str
     events: set = field(default_factory=set)
+    # {event_id: {date: [(start, end)]} or FULL_EVENT}
+    event_availability: dict = field(default_factory=dict)
+
+
+FULL_EVENT = "full_event"
 
 
 def requirements_for(opportunity):
@@ -85,6 +95,8 @@ def requirements_for(opportunity):
         availability=set(opportunity.availability or []),
         commitment=opportunity.commitment,
         event=(opportunity.event_id, opportunity.event.name) if opportunity.event_id else None,
+        event_windows=window_ranges(opportunity.event_availability) if opportunity.event_availability else None,
+        event_days={day: [WHOLE_DAY] for day in event_dates(opportunity.event)} if opportunity.event_id else None,
     )
 
 
@@ -97,6 +109,10 @@ def profile_for(user):
         availability=set(user.availability or []),
         commitment=user.commitment,
         events={event.pk for event in user.interested_events.all()},
+        event_availability={
+            interest.event_id: FULL_EVENT if interest.full_event else window_ranges(interest.windows)
+            for interest in user.event_interests.all()
+        },
     )
 
 
@@ -105,7 +121,44 @@ def passes_required_filters(requirements, profile):
         return False
     if requirements.availability and not (requirements.availability & profile.availability):
         return False
+    if requirements.event_windows and _event_overlap(requirements, profile) == 0:
+        return False
     return True
+
+
+def _minutes(ranges):
+    return sum(end - start for spans in ranges.values() for start, end in spans)
+
+
+def _overlap(first, second):
+    total = 0
+    for day, spans in first.items():
+        for start, end in spans:
+            for other_start, other_end in second.get(day, []):
+                total += max(0, min(end, other_end) - max(start, other_start))
+    return total
+
+
+def _candidate_event_ranges(requirements, profile):
+    """The candidate's availability for the post's event, or None if they haven't given any."""
+    if not requirements.event:
+        return None
+    availability = profile.event_availability.get(requirements.event[0])
+    if availability == FULL_EVENT:
+        return requirements.event_days
+    return availability
+
+
+def _event_overlap(requirements, profile):
+    """Minutes of overlap with the post's event windows; None when the candidate gave no availability."""
+    candidate = _candidate_event_ranges(requirements, profile)
+    if candidate is None:
+        return None
+    return _overlap(requirements.event_windows, candidate)
+
+
+def _day_label(days):
+    return "Available " + ", ".join(f"{day:%b} {day.day}" for day in sorted(days))
 
 
 def _join(names):
@@ -121,6 +174,28 @@ def _availability_label(slots):
     if len(labels) <= 2:
         return "Available " + " and ".join(labels)
     return "Available " + ", ".join(labels[:-1]) + " and " + labels[-1]
+
+
+def _event_availability_part(requirements, profile, weight):
+    candidate = _candidate_event_ranges(requirements, profile)
+    if requirements.event_windows:
+        if candidate is None:
+            return ("availability", weight, 0.0, "")
+        needed = _minutes(requirements.event_windows)
+        overlap = _overlap(requirements.event_windows, candidate)
+        value = min(1.0, overlap / needed) if needed else 0.0
+        if value >= 1:
+            label = "Available for all your event days"
+        elif overlap:
+            label = _day_label(day for day in requirements.event_windows if _overlap({day: requirements.event_windows[day]}, candidate))
+        else:
+            label = ""
+        return ("availability", weight, value, label)
+    if candidate is None:
+        return None
+    if profile.event_availability.get(requirements.event[0]) == FULL_EVENT:
+        return ("availability", weight, 1.0, "Available for the full event")
+    return ("availability", weight, 0.5, _day_label(candidate))
 
 
 def score(requirements, profile):
@@ -153,6 +228,11 @@ def score(requirements, profile):
         event_id, event_name = requirements.event
         going = event_id in profile.events
         parts.append(("event", weights["event"], 1.0 if going else 0.0, f"Going to {event_name}" if going else ""))
+
+    if requirements.event:
+        event_part = _event_availability_part(requirements, profile, weights["availability"])
+        if event_part:
+            parts.append(event_part)
 
     if requirements.availability:
         overlap = requirements.availability & profile.availability
@@ -190,7 +270,9 @@ def score(requirements, profile):
 
 
 def _profile_prefetches(queryset):
-    return queryset.prefetch_related("user_skills__skill", "preferred_roles", "interests", "interested_events")
+    return queryset.prefetch_related(
+        "user_skills__skill", "preferred_roles", "interests", "interested_events", "event_interests"
+    )
 
 
 def rank_candidates(opportunity, *, limit=None):
