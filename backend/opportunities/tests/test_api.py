@@ -58,7 +58,7 @@ class OpportunityBrowseTests(OpportunityFixtures, APITestCase):
             {"id": str(owner.id), "display_name": "Jane Doe", "major": "Computer Science", "year": "senior"},
         )
         self.assertEqual(item["availability"], opportunity.availability)
-        self.assertEqual(item["commitment"], "full_event")
+        self.assertEqual(item["commitment"], "full")
         self.assertEqual(item["interests"], [{"slug": "ai", "name": "AI"}])
         self.assertEqual(
             item["roles"],
@@ -165,7 +165,7 @@ class OpportunityCreateTests(OpportunityFixtures, APITestCase):
             "opportunity_type": "hackathon",
             "event": "hackru-fall",
             "availability": ["weekend_morning", "weekend_afternoon"],
-            "commitment": "full_event",
+            "commitment": "full",
             "interests": ["ai"],
             "roles": [{"role": "backend-developer", "notes": "Django or FastAPI"}, {"role": "designer"}],
             "team_capacity": 3,
@@ -561,10 +561,10 @@ class OpportunityBrowseMoreFiltersTests(OpportunityFixtures, APITestCase):
         self.assertEqual(self.titles(interest="ai"), {"AI project"})
 
     def test_filters_by_commitment(self):
-        make_opportunity(title="Weekend sprint", commitment="full_event")
-        make_opportunity(title="Side project", commitment="light")
+        make_opportunity(title="Weekend sprint", commitment="full")
+        make_opportunity(title="Side project", commitment="partial")
 
-        self.assertEqual(self.titles(commitment="light"), {"Side project"})
+        self.assertEqual(self.titles(commitment="partial"), {"Side project"})
 
 
 class OpportunityBrowseEventStatusTests(APITestCase):
@@ -597,7 +597,7 @@ class OpportunityDesignFieldsTests(OpportunityFixtures, APITestCase):
         data = {
             "title": "HackRU Spring Teammates Needed",
             "opportunity_type": "hackathon",
-            "commitment": "full_event",
+            "commitment": "full",
             "roles": [{"role": "backend-developer"}],
             "interests": ["ai"],
             "location_type": "virtual",

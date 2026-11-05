@@ -13,7 +13,7 @@ class BrowseMatchTests(APITestCase):
         self.backend = Role.objects.create(name="Backend developer")
         self.ai = Interest.objects.create(name="AI")
         self.viewer = self.login(
-            make_user(availability=["weekend_morning"], commitment="full_event", preferred_roles=[self.backend], interests=[self.ai])
+            make_user(availability=["weekend_morning"], commitment="full", preferred_roles=[self.backend], interests=[self.ai])
         )
         UserSkill.objects.create(user=self.viewer, skill=self.python)
 

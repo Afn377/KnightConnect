@@ -63,7 +63,7 @@ class ProfileTests(TestCase):
 
         self.user.display_name = "Scarlet Knight"
         self.user.availability = ["weekend_afternoon"]
-        self.user.commitment = "moderate"
+        self.user.commitment = "partial"
 
         self.assertTrue(self.user.is_profile_complete)
 

@@ -16,7 +16,7 @@ class MeRetrieveTests(APITestCase):
             display_name="Scarlet Knight",
             bio="CS junior",
             availability=["weekend_morning"],
-            commitment="moderate",
+            commitment="partial",
             preferred_roles=[self.backend],
             interests=[self.ai],
         )
@@ -35,7 +35,7 @@ class MeRetrieveTests(APITestCase):
         self.assertEqual(body["bio"], "CS junior")
         self.assertTrue(body["open_to_requests"])
         self.assertEqual(body["availability"], ["weekend_morning"])
-        self.assertEqual(body["commitment"], "moderate")
+        self.assertEqual(body["commitment"], "partial")
         self.assertEqual(body["preferred_roles"], [{"slug": "backend-developer", "name": "Backend developer"}])
         self.assertEqual(body["interests"], [{"slug": "aiml", "name": "AI/ML"}])
         self.assertEqual(body["skills"], [{"skill": {"slug": "python", "name": "Python"}, "proficiency": "advanced"}])
@@ -68,7 +68,7 @@ class MeUpdateTests(APITestCase):
                 "bio": "Looking for a HackRU team",
                 "open_to_requests": False,
                 "availability": ["weekday_evening", "weekend_afternoon"],
-                "commitment": "heavy",
+                "commitment": "partial",
             }
         )
 
@@ -78,7 +78,7 @@ class MeUpdateTests(APITestCase):
         self.assertEqual(self.user.bio, "Looking for a HackRU team")
         self.assertFalse(self.user.open_to_requests)
         self.assertEqual(self.user.availability, ["weekday_evening", "weekend_afternoon"])
-        self.assertEqual(self.user.commitment, "heavy")
+        self.assertEqual(self.user.commitment, "partial")
         self.assertEqual(response.json()["display_name"], "Scarlet Knight")
 
     def test_replaces_roles_and_interests_by_slug(self):
@@ -190,3 +190,12 @@ class InterestedEventsTests(APITestCase):
         body = self.client.get(f"/api/users/{other.id}/").json()
 
         self.assertEqual(body["interested_events"], [{"slug": "hackru-spring", "name": "HackRU Spring"}])
+
+
+class CommitmentChoicesTests(APITestCase):
+    def test_commitment_is_full_or_partial(self):
+        self.login(make_user())
+
+        self.assertEqual(self.client.patch("/api/me/", {"commitment": "full"}, format="json").status_code, 200)
+        self.assertEqual(self.client.patch("/api/me/", {"commitment": "partial"}, format="json").status_code, 200)
+        self.assertEqual(self.client.patch("/api/me/", {"commitment": "full_event"}, format="json").status_code, 400)

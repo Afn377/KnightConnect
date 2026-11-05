@@ -24,7 +24,7 @@ class DraftTests(APITestCase):
         return {
             "title": "HackRU Spring Teammates Needed",
             "opportunity_type": "hackathon",
-            "commitment": "full_event",
+            "commitment": "full",
             "roles": [{"role": "backend-developer"}],
             "expires_at": (timezone.now() + timedelta(days=3)).isoformat(),
         }

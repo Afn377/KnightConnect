@@ -18,7 +18,7 @@ class PublicProfileTests(APITestCase):
             display_name="Jane Doe",
             bio="Designer",
             availability=["weekend_evening"],
-            commitment="light",
+            commitment="partial",
             preferred_roles=[Role.objects.create(name="Designer")],
         )
         UserSkill.objects.create(user=self.student, skill=Skill.objects.create(name="Figma"), proficiency="advanced")
@@ -36,7 +36,7 @@ class PublicProfileTests(APITestCase):
         self.assertEqual(body["display_name"], "Jane Doe")
         self.assertEqual(body["bio"], "Designer")
         self.assertEqual(body["availability"], ["weekend_evening"])
-        self.assertEqual(body["commitment"], "light")
+        self.assertEqual(body["commitment"], "partial")
         self.assertEqual(body["preferred_roles"], [{"slug": "designer", "name": "Designer"}])
         self.assertEqual(body["skills"], [{"skill": {"slug": "figma", "name": "Figma"}, "proficiency": "advanced"}])
         self.assertNotIn("email", body)

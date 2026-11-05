@@ -44,7 +44,7 @@ def make_opportunity(owner=None, **fields):
         "title": "HackRU Teammates Needed",
         "description": "Looking for teammates for HackRU.",
         "opportunity_type": Opportunity.Type.HACKATHON,
-        "commitment": "full_event",
+        "commitment": "full",
         "availability": ["weekend_morning", "weekend_afternoon"],
         "expires_at": timezone.now() + timedelta(days=3),
     }

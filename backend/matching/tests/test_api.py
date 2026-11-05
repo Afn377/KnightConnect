@@ -11,12 +11,12 @@ class MatchingApiFixtures:
         self.python = Skill.objects.create(name="Python")
         self.backend = Role.objects.create(name="Backend developer")
         self.owner = make_user(display_name="Owner")
-        self.opportunity = make_opportunity(owner=self.owner, availability=["weekend_morning"], commitment="full_event")
+        self.opportunity = make_opportunity(owner=self.owner, availability=["weekend_morning"], commitment="full")
         OpportunityRole.objects.create(opportunity=self.opportunity, role=self.backend)
         OpportunitySkill.objects.create(opportunity=self.opportunity, skill=self.python, requirement_type="required")
 
     def make_candidate(self, **fields):
-        defaults = {"availability": ["weekend_morning"], "commitment": "full_event"}
+        defaults = {"availability": ["weekend_morning"], "commitment": "full"}
         defaults.update(fields)
         candidate = make_user(**defaults)
         UserSkill.objects.create(user=candidate, skill=self.python)

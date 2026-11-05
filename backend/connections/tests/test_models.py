@@ -21,7 +21,7 @@ class ConnectionRequestTests(TestCase):
             title="HackRU Teammates Needed",
             description="d",
             opportunity_type="hackathon",
-            commitment="full_event",
+            commitment="full",
             expires_at=timezone.now() + timedelta(days=3),
         )
 
@@ -78,7 +78,7 @@ class ConnectionFeedbackTests(TestCase):
             title="t",
             description="d",
             opportunity_type="other",
-            commitment="light",
+            commitment="partial",
             expires_at=timezone.now() + timedelta(days=3),
         )
         self.connection = ConnectionRequest.objects.create(

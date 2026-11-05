@@ -23,7 +23,7 @@ class MatchingFixtures:
         self.fintech = Interest.objects.create(name="Fintech")
 
     def make_student(self, skills=(), **fields):
-        defaults = {"availability": ["weekend_morning"], "commitment": "full_event"}
+        defaults = {"availability": ["weekend_morning"], "commitment": "full"}
         defaults.update(fields)
         student = make_user(**defaults)
         for skill in skills:
@@ -38,7 +38,7 @@ class RankCandidatesTests(MatchingFixtures, TestCase):
         self.opportunity = make_opportunity(
             owner=self.owner,
             availability=["weekend_morning", "weekend_afternoon"],
-            commitment="full_event",
+            commitment="full",
             interests=[self.ai],
         )
         OpportunityRole.objects.create(opportunity=self.opportunity, role=self.backend)
@@ -98,7 +98,7 @@ class RankCandidatesTests(MatchingFixtures, TestCase):
         self.assertEqual(self.candidates(), [declined])
 
     def test_better_fit_ranks_higher(self):
-        basic = self.make_student(skills=[self.python], commitment="light")
+        basic = self.make_student(skills=[self.python], commitment="partial")
         strong = self.make_student(
             skills=[self.python, self.react],
             preferred_roles=[self.backend],
@@ -158,7 +158,7 @@ class RankOpportunitiesTests(MatchingFixtures, TestCase):
         )
 
     def post(self, required=(), preferred=(), roles=((None, 1),), **fields):
-        defaults = {"availability": ["weekend_morning"], "commitment": "full_event"}
+        defaults = {"availability": ["weekend_morning"], "commitment": "full"}
         defaults.update(fields)
         opportunity = make_opportunity(**defaults)
         for role, _ in roles:
@@ -214,7 +214,7 @@ class RankOpportunitiesTests(MatchingFixtures, TestCase):
         self.assertEqual(self.opportunities(), [])
 
     def test_better_fit_ranks_higher(self):
-        weak = self.post(roles=[(self.designer, 1)], preferred=[self.figma], commitment="light")
+        weak = self.post(roles=[(self.designer, 1)], preferred=[self.figma], commitment="partial")
         strong = self.post(preferred=[self.react], interests=[self.ai], availability=["weekend_morning", "weekend_afternoon"])
 
         self.assertEqual(self.opportunities(), [strong, weak])
@@ -232,12 +232,12 @@ class RankOpportunitiesTests(MatchingFixtures, TestCase):
 class SkillScoringTests(MatchingFixtures, TestCase):
     def setUp(self):
         self.make_catalog()
-        self.opportunity = make_opportunity(availability=[], commitment="full_event")
+        self.opportunity = make_opportunity(availability=[], commitment="full")
         OpportunitySkill.objects.create(opportunity=self.opportunity, skill=self.python, requirement_type="required")
         OpportunitySkill.objects.create(opportunity=self.opportunity, skill=self.react, requirement_type="preferred")
 
     def student_with(self, *skills):
-        student = make_user(availability=["weekend_morning"], commitment="full_event")
+        student = make_user(availability=["weekend_morning"], commitment="full")
         for skill, proficiency in skills:
             UserSkill.objects.create(user=student, skill=skill, proficiency=proficiency)
         return student
@@ -285,3 +285,23 @@ class InterestedEventScoringTests(MatchingFixtures, TestCase):
 
         self.assertEqual([match.candidate for match in matches], [going, not_going])
         self.assertIn("Going to HackRU Spring", [factor.label for factor in matches[0].factors])
+
+
+class CommitmentScoringTests(MatchingFixtures, TestCase):
+    def test_meeting_the_commitment_scores_higher_than_falling_short(self):
+        full_post = make_opportunity(availability=[], commitment="full")
+        full_student = self.make_student(commitment="full")
+        partial_student = self.make_student(commitment="partial")
+
+        scores = {match.candidate: match for match in rank_candidates(full_post)}
+
+        self.assertGreater(scores[full_student].score, scores[partial_student].score)
+        self.assertIn("Same commitment level", [f.label for f in scores[full_student].factors])
+
+    def test_full_commitment_satisfies_a_partial_post(self):
+        partial_post = make_opportunity(availability=[], commitment="partial")
+        full_student = self.make_student(commitment="full")
+
+        labels = [f.label for f in rank_candidates(partial_post)[0].factors]
+
+        self.assertIn("Can commit to the full event", labels)
