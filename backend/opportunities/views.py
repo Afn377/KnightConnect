@@ -18,7 +18,7 @@ class OpportunityListView(generics.ListCreateAPIView):
 
     Query parameters: ``q`` (searches title, description, role, and skill
     names), ``event``, ``role``, ``skill``, and ``interest`` (slugs),
-    ``type``, ``commitment``, and ``status`` (the event's: upcoming or ongoing).
+    ``type``, ``commitment``, ``location``, and ``status`` (the event's: upcoming or ongoing).
     """
 
     serializer_class = OpportunitySerializer
@@ -46,6 +46,8 @@ class OpportunityListView(generics.ListCreateAPIView):
             queryset = queryset.filter(interests__slug=interest)
         if commitment := params.get("commitment"):
             queryset = queryset.filter(commitment=commitment)
+        if location := params.get("location"):
+            queryset = queryset.filter(location_type=location)
         if event_status := params.get("status"):
             queryset = queryset.filter(event__in=Event.objects.with_status(event_status))
 

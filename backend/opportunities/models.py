@@ -7,7 +7,7 @@ from django.db import models
 from django.utils import timezone
 
 from catalog.models import Event, Interest, Role, Skill
-from core.choices import Commitment
+from core.choices import Commitment, LocationType
 from core.models import TimeStampedModel, UUIDModel
 from core.validators import validate_availability_slots
 
@@ -58,7 +58,16 @@ class Opportunity(UUIDModel, TimeStampedModel):
         help_text="Leave empty for projects not tied to a specific event.",
     )
     title = models.CharField(max_length=120)
-    description = models.TextField(max_length=4000)
+    description = models.TextField(
+        max_length=4000, blank=True, help_text="Project overview: the track and what the team wants to build."
+    )
+    project_ideas = models.TextField(max_length=2000, blank=True)
+    required_availability = models.CharField(
+        max_length=300, blank=True, help_text="What the team needs, in the poster's words."
+    )
+    location_type = models.CharField(
+        max_length=10, choices=LocationType.choices, default=LocationType.IN_PERSON
+    )
     opportunity_type = models.CharField(max_length=20, choices=Type.choices)
     availability = models.JSONField(
         default=list, blank=True, validators=[validate_availability_slots]
