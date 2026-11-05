@@ -30,6 +30,7 @@ class ConnectionRequestSerializer(serializers.ModelSerializer):
     direction = serializers.SerializerMethodField()
     contact_methods = serializers.SerializerMethodField()
     my_feedback = serializers.SerializerMethodField()
+    fit = serializers.SerializerMethodField()
 
     class Meta:
         model = ConnectionRequest
@@ -45,6 +46,7 @@ class ConnectionRequestSerializer(serializers.ModelSerializer):
             "message",
             "contact_methods",
             "my_feedback",
+            "fit",
             "created_at",
             "responded_at",
         ]
@@ -67,6 +69,15 @@ class ConnectionRequestSerializer(serializers.ModelSerializer):
         other = obj.recipient if obj.sender_id == self._viewer().id else obj.sender
         return shared_contact_methods(other)
 
+
+    def get_fit(self, obj):
+        """Why the candidate and the post may suit each other, as matching explanation factors."""
+        from matching.engine import profile_for, requirements_for, score
+
+        if obj.opportunity is None:
+            return []
+        _, factors = score(requirements_for(obj.opportunity), profile_for(obj.candidate))
+        return [factor.as_dict() for factor in factors]
 
     def get_my_feedback(self, obj):
         feedback = next((item for item in obj.feedback.all() if item.user_id == self._viewer().id), None)
