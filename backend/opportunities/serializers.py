@@ -7,6 +7,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from accounts.models import User
+from accounts.serializers import avatar_url
 from catalog.models import Event, Interest, Role, Skill
 from catalog.serializers import CatalogSlugField
 from core.windows import normalize_windows
@@ -16,11 +17,16 @@ from .models import Opportunity, OpportunityRole, OpportunitySkill
 
 
 class OwnerSerializer(serializers.ModelSerializer):
-    """Compact user summary shown on cards: name, major, and year."""
+    """Compact user summary shown on cards: name, major, year, and picture."""
+
+    avatar_url = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "display_name", "major", "year"]
+        fields = ["id", "display_name", "major", "year", "avatar_url"]
+
+    def get_avatar_url(self, user):
+        return avatar_url(self, user)
 
 
 class OpportunityRoleSerializer(serializers.ModelSerializer):

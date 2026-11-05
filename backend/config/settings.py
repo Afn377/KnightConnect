@@ -142,6 +142,38 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+
+# Uploaded media (profile pictures)
+# Stored in Cloudflare R2 (S3-compatible) when R2_BUCKET is set, and in a
+# local folder otherwise. Serverless hosts like Vercel can't keep local files.
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+AVATAR_MAX_UPLOAD_BYTES = int(os.environ.get("AVATAR_MAX_UPLOAD_BYTES", str(5 * 1024 * 1024)))
+
+if os.environ.get("R2_BUCKET"):
+    _default_storage = {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": {
+            "bucket_name": os.environ["R2_BUCKET"],
+            "endpoint_url": f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com",
+            "access_key": os.environ["R2_ACCESS_KEY_ID"],
+            "secret_key": os.environ["R2_SECRET_ACCESS_KEY"],
+            "region_name": "auto",
+            # Public bucket URL or custom domain, e.g. pub-xxxx.r2.dev or media.example.com
+            "custom_domain": os.environ.get("R2_PUBLIC_DOMAIN"),
+            "querystring_auth": False,
+            "file_overwrite": False,
+        },
+    }
+else:
+    _default_storage = {"BACKEND": "django.core.files.storage.FileSystemStorage"}
+
+STORAGES = {
+    "default": _default_storage,
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 

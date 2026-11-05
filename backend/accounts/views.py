@@ -1,16 +1,19 @@
 from django.contrib.auth import login, logout
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET
 from rest_framework import generics, status
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.throttles import EmailRateThrottle, ScopedRateThrottle
 
+from .avatars import process_avatar
 from .deletion import restore_account, schedule_account_deletion
 from .login_codes import InvalidLoginCode, issue_login_code, verify_login_code
 from .models import ContactMethod, User
@@ -144,3 +147,25 @@ class PublicProfileView(generics.RetrieveAPIView):
         return User.objects.visible_to(self.request.user).prefetch_related(
             "preferred_roles", "interests", "interested_events", "event_interests__event", "user_skills__skill"
         )
+
+
+class AvatarView(APIView):
+    """Upload (POST, multipart field ``image``) the signed-in user's profile picture."""
+
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        upload = request.FILES.get("image")
+        if upload is None:
+            raise ValidationError({"image": ["Choose an image to upload."]})
+        try:
+            content = process_avatar(upload)
+        except DjangoValidationError as error:
+            raise ValidationError({"image": error.messages})
+
+        user = request.user
+        previous = user.avatar.name if user.avatar else None
+        user.avatar.save("avatar.jpg", content, save=True)
+        if previous:
+            user.avatar.storage.delete(previous)
+        return Response({"avatar_url": MeSerializer(user, context={"request": request}).data["avatar_url"]})

@@ -66,8 +66,18 @@ class EventAvailabilitySerializer(serializers.ModelSerializer):
         return attrs
 
 
+def avatar_url(serializer, user):
+    if not user.avatar:
+        return None
+    url = user.avatar.url
+    request = serializer.context.get("request")
+    return request.build_absolute_uri(url) if request and url.startswith("/") else url
+
+
 class MeSerializer(serializers.ModelSerializer):
     """The signed-in user's own profile."""
+
+    avatar_url = serializers.SerializerMethodField()
 
     preferred_roles = CatalogSlugField(many=True, queryset=Role.objects.all(), required=False)
     interests = CatalogSlugField(many=True, queryset=Interest.objects.all(), required=False)
@@ -83,6 +93,7 @@ class MeSerializer(serializers.ModelSerializer):
             "display_name",
             "major",
             "year",
+            "avatar_url",
             "bio",
             "open_to_requests",
             "availability",
@@ -108,6 +119,9 @@ class MeSerializer(serializers.ModelSerializer):
         if len(slugs) != len(set(slugs)):
             raise serializers.ValidationError("Each event can only be listed once.")
         return entries
+
+    def get_avatar_url(self, user):
+        return avatar_url(self, user)
 
     @transaction.atomic
     def update(self, instance, validated_data):
@@ -171,6 +185,9 @@ class ContactMethodSerializer(serializers.ModelSerializer):
             self._clear_other_preferences(user)
         return ContactMethod.objects.create(user=user, **validated_data)
 
+    def get_avatar_url(self, user):
+        return avatar_url(self, user)
+
     @transaction.atomic
     def update(self, instance, validated_data):
         if validated_data.get("is_preferred"):
@@ -180,6 +197,8 @@ class ContactMethodSerializer(serializers.ModelSerializer):
 
 class PublicProfileSerializer(serializers.ModelSerializer):
     """What other students can see. Never includes email or contact methods."""
+
+    avatar_url = serializers.SerializerMethodField()
 
     preferred_roles = CatalogSlugField(many=True, read_only=True)
     interests = CatalogSlugField(many=True, read_only=True)
@@ -194,6 +213,7 @@ class PublicProfileSerializer(serializers.ModelSerializer):
             "display_name",
             "major",
             "year",
+            "avatar_url",
             "bio",
             "open_to_requests",
             "availability",
@@ -205,3 +225,6 @@ class PublicProfileSerializer(serializers.ModelSerializer):
             "skills",
         ]
         read_only_fields = fields
+
+    def get_avatar_url(self, user):
+        return avatar_url(self, user)

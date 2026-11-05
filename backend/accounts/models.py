@@ -1,3 +1,5 @@
+import uuid
+
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
@@ -10,6 +12,10 @@ from core.windows import validate_windows
 
 from .managers import UserManager
 from .validators import validate_rutgers_email
+
+
+def avatar_path(user, filename):
+    return f"avatars/{user.id}/{uuid.uuid4().hex}.jpg"
 
 
 class User(UUIDModel, AbstractBaseUser, PermissionsMixin, TimeStampedModel):
@@ -35,6 +41,7 @@ class User(UUIDModel, AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     display_name = models.CharField(max_length=80, blank=True)
     major = models.CharField(max_length=100, blank=True)
     year = models.CharField(max_length=10, choices=Year.choices, blank=True)
+    avatar = models.ImageField(upload_to=avatar_path, blank=True)
     bio = models.TextField(max_length=1000, blank=True)
 
     open_to_requests = models.BooleanField(
