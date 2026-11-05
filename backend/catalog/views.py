@@ -52,6 +52,7 @@ class SkillListView(SearchableCatalogListView):
 
 class RoleListView(SearchableCatalogListView):
     model = Role
+    allow_create = True
 
 
 class InterestListView(SearchableCatalogListView):
