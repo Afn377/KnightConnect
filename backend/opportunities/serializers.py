@@ -15,9 +15,11 @@ from .models import Opportunity, OpportunityRole, OpportunitySkill
 
 
 class OwnerSerializer(serializers.ModelSerializer):
+    """Compact user summary shown on cards: name, major, and year."""
+
     class Meta:
         model = User
-        fields = ["id", "display_name"]
+        fields = ["id", "display_name", "major", "year"]
 
 
 class OpportunityRoleSerializer(serializers.ModelSerializer):

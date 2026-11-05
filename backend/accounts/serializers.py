@@ -51,6 +51,8 @@ class MeSerializer(serializers.ModelSerializer):
             "id",
             "email",
             "display_name",
+            "major",
+            "year",
             "bio",
             "open_to_requests",
             "availability",
@@ -144,6 +146,8 @@ class PublicProfileSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "display_name",
+            "major",
+            "year",
             "bio",
             "open_to_requests",
             "availability",

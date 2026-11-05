@@ -24,7 +24,16 @@ class User(UUIDModel, AbstractBaseUser, PermissionsMixin, TimeStampedModel):
         unique=True,
         validators=[validate_rutgers_email],
     )
+    class Year(models.TextChoices):
+        FRESHMAN = "freshman", "Freshman"
+        SOPHOMORE = "sophomore", "Sophomore"
+        JUNIOR = "junior", "Junior"
+        SENIOR = "senior", "Senior"
+        GRAD = "grad", "Graduate student"
+
     display_name = models.CharField(max_length=80, blank=True)
+    major = models.CharField(max_length=100, blank=True)
+    year = models.CharField(max_length=10, choices=Year.choices, blank=True)
     bio = models.TextField(max_length=1000, blank=True)
 
     open_to_requests = models.BooleanField(
