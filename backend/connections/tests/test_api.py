@@ -530,3 +530,52 @@ class ConnectionFeedbackTests(RequestFixtures, APITestCase):
         self.login(make_user())
 
         self.assertEqual(self.rate().status_code, 404)
+
+
+class RequestPageTests(RequestFixtures, APITestCase):
+    url = "/api/requests/"
+
+    def setUp(self):
+        super().setUp()
+        self.make_world()
+        self.other_post = make_opportunity(owner=self.owner, title="Other post")
+        self.received_pending = self.make_request(sender=make_user())
+        self.received_accepted = self.make_request(sender=make_user(), status="accepted")
+        self.received_other_post = self.make_request(opportunity=self.other_post, sender=make_user())
+        self.declined = self.make_request(sender=make_user(), status="declined")
+        self.withdrawn = self.make_request(sender=make_user(), status="cancelled")
+        theirs = make_opportunity()
+        self.sent = self.make_request(opportunity=theirs, sender=self.owner, recipient=theirs.owner)
+        self.login(self.owner)
+
+    def ids(self, **params):
+        response = self.client.get(self.url, params)
+        self.assertEqual(response.status_code, 200)
+        return {item["id"] for item in response.json()["results"]}
+
+    def test_filters_by_several_statuses(self):
+        self.assertEqual(self.ids(status="declined,cancelled"), {str(self.declined.id), str(self.withdrawn.id)})
+
+    def test_filters_by_post(self):
+        self.assertEqual(self.ids(opportunity=str(self.other_post.id)), {str(self.received_other_post.id)})
+
+    def test_reports_tab_counts(self):
+        counts = self.client.get(self.url).json()["counts"]
+
+        self.assertEqual(counts, {"sent": 1, "received": 3, "history": 2})
+
+    def test_explains_why_a_candidate_may_be_a_fit(self):
+        from accounts.models import UserSkill
+        from catalog.models import Skill
+        from opportunities.models import OpportunitySkill
+
+        python = Skill.objects.create(name="Python")
+        OpportunitySkill.objects.create(opportunity=self.opportunity, skill=python, requirement_type="preferred")
+        UserSkill.objects.create(user=self.received_pending.sender, skill=python)
+        self.received_pending.sender.preferred_roles.set([self.backend.role])
+
+        body = self.client.get(f"{self.url}{self.received_pending.id}/").json()
+
+        labels = [factor["label"] for factor in body["fit"]]
+        self.assertIn("Python experience", labels)
+        self.assertIn("Fits the Backend developer role", labels)
