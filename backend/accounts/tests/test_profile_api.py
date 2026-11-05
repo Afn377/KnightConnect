@@ -157,3 +157,36 @@ class MajorAndYearTests(APITestCase):
         body = self.client.get(f"/api/users/{other.id}/").json()
 
         self.assertEqual((body["major"], body["year"]), ("Design", "grad"))
+
+
+class InterestedEventsTests(APITestCase):
+    def setUp(self):
+        super().setUp()
+        from core.testing import make_event
+
+        self.user = self.login(make_user())
+        self.hackru = make_event(name="HackRU Spring")
+        self.princeton = make_event(name="HackPrinceton Spring")
+
+    def test_sets_interested_hackathons_by_slug(self):
+        response = self.client.patch(
+            "/api/me/", {"interested_events": ["hackru-spring", "hackprinceton-spring"]}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            sorted(event["slug"] for event in response.json()["interested_events"]),
+            ["hackprinceton-spring", "hackru-spring"],
+        )
+        self.assertEqual(self.user.interested_events.count(), 2)
+
+    def test_rejects_unknown_event(self):
+        self.assertEqual(self.client.patch("/api/me/", {"interested_events": ["nope"]}, format="json").status_code, 400)
+
+    def test_public_profile_lists_interested_hackathons(self):
+        other = make_user()
+        other.interested_events.set([self.hackru])
+
+        body = self.client.get(f"/api/users/{other.id}/").json()
+
+        self.assertEqual(body["interested_events"], [{"slug": "hackru-spring", "name": "HackRU Spring"}])
