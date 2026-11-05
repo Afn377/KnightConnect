@@ -228,6 +228,7 @@ CRON_SECRET = os.environ.get("CRON_SECRET", "")
 MATCHING_WEIGHTS = {
     "skills": 0.30,
     "role": 0.25,
+    "event": 0.15,
     "availability": 0.20,
     "interests": 0.15,
     "commitment": 0.10,

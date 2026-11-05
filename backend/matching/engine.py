@@ -6,7 +6,7 @@ Matching runs in three steps:
    skill, no overlapping availability, inactive or blocked accounts, and
    students already pending or accepted on the opportunity.
 2. A weighted score ranks what remains using skills (required ones count
-   double, scaled by proficiency), role fit,
+   double, scaled by proficiency), role fit, interest in the event,
    availability overlap, shared interests, and commitment closeness
    (weights in settings.MATCHING_WEIGHTS).
 3. Each factor that contributed becomes a human-readable explanation.
@@ -57,6 +57,7 @@ class Requirements:
     interests: dict
     availability: set
     commitment: str
+    event: tuple = None
 
 
 @dataclass
@@ -67,6 +68,7 @@ class Profile:
     interests: set
     availability: set
     commitment: str
+    events: set = field(default_factory=set)
 
 
 def requirements_for(opportunity):
@@ -84,6 +86,7 @@ def requirements_for(opportunity):
         interests={i.pk: i.name for i in opportunity.interests.all()},
         availability=set(opportunity.availability or []),
         commitment=opportunity.commitment,
+        event=(opportunity.event_id, opportunity.event.name) if opportunity.event_id else None,
     )
 
 
@@ -95,6 +98,7 @@ def profile_for(user):
         interests={i.pk for i in user.interests.all()},
         availability=set(user.availability or []),
         commitment=user.commitment,
+        events={event.pk for event in user.interested_events.all()},
     )
 
 
@@ -147,6 +151,11 @@ def score(requirements, profile):
         label = f"Fits the {_join(fitting)} role" if fitting else ""
         parts.append(("role", weights["role"], 1.0 if fitting else 0.0, label))
 
+    if requirements.event:
+        event_id, event_name = requirements.event
+        going = event_id in profile.events
+        parts.append(("event", weights["event"], 1.0 if going else 0.0, f"Going to {event_name}" if going else ""))
+
     if requirements.availability:
         overlap = requirements.availability & profile.availability
         parts.append(
@@ -181,7 +190,7 @@ def score(requirements, profile):
 
 
 def _profile_prefetches(queryset):
-    return queryset.prefetch_related("user_skills__skill", "preferred_roles", "interests")
+    return queryset.prefetch_related("user_skills__skill", "preferred_roles", "interests", "interested_events")
 
 
 def rank_candidates(opportunity, *, limit=None):
