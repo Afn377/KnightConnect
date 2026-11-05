@@ -7,11 +7,12 @@ from rest_framework.response import Response
 
 from analytics.models import FunnelEvent
 from catalog.models import Event
+from connections.models import ConnectionRequest
 from core.exceptions import Conflict
 
 from .models import Opportunity
 from .queries import browsable_by, effective_status_filter, status_counts, viewable_by, with_details
-from .serializers import OpportunitySerializer
+from .serializers import OpportunitySerializer, TeamMemberSerializer
 from .services import close_opportunity, delete_opportunity, publish_opportunity
 
 
@@ -176,3 +177,37 @@ class OpportunityReopenView(generics.GenericAPIView):
         opportunity.reopen()
         opportunity = with_details(Opportunity.objects.filter(pk=opportunity.pk)).get()
         return Response(self.get_serializer(opportunity).data)
+
+
+class OpportunityTeamView(generics.GenericAPIView):
+    """The confirmed team: the owner plus accepted members. Visible to the team only."""
+
+    def get_queryset(self):
+        return viewable_by(self.request.user)
+
+    def get(self, request, *args, **kwargs):
+        opportunity = self.get_object()
+        accepted = (
+            opportunity.connection_requests.filter(status=ConnectionRequest.Status.ACCEPTED)
+            .select_related("sender", "recipient", "opportunity_role__role")
+            .order_by("responded_at")
+        )
+        team = [
+            {
+                "user": opportunity.owner,
+                "is_owner": True,
+                "role": None,
+                "confirmed_at": opportunity.published_at or opportunity.created_at,
+            }
+        ] + [
+            {
+                "user": request_.candidate,
+                "is_owner": False,
+                "role": request_.opportunity_role.role if request_.opportunity_role else None,
+                "confirmed_at": request_.responded_at,
+            }
+            for request_ in accepted
+        ]
+        if request.user.id not in {member["user"].id for member in team}:
+            raise PermissionDenied("Only the team can see its members.")
+        return Response(TeamMemberSerializer(team, many=True).data)

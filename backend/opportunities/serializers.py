@@ -242,3 +242,17 @@ class OpportunitySerializer(serializers.ModelSerializer):
                 current.notes = entry.get("notes", "")
                 current.save(update_fields=["slots", "notes"])
         OpportunityRole.objects.filter(pk__in=[role.pk for role in existing.values()]).delete()
+
+
+class TeamMemberSerializer(serializers.Serializer):
+    id = serializers.UUIDField(source="user.id")
+    display_name = serializers.CharField(source="user.display_name")
+    major = serializers.CharField(source="user.major")
+    year = serializers.CharField(source="user.year")
+    is_owner = serializers.BooleanField()
+    role = serializers.SerializerMethodField()
+    confirmed_at = serializers.DateTimeField()
+
+    def get_role(self, member):
+        role = member["role"]
+        return {"slug": role.slug, "name": role.name} if role else None
