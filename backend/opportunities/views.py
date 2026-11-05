@@ -16,7 +16,8 @@ class OpportunityListView(generics.ListCreateAPIView):
     """Browse active opportunities (GET) or post a new one (POST).
 
     Query parameters: ``q`` (searches title, description, role, and skill
-    names), ``event``, ``role``, and ``skill`` (slugs), and ``type``.
+    names), ``event``, ``role``, ``skill``, and ``interest`` (slugs),
+    ``type``, and ``commitment``.
     """
 
     serializer_class = OpportunitySerializer
@@ -40,6 +41,10 @@ class OpportunityListView(generics.ListCreateAPIView):
             queryset = queryset.filter(opportunity_skills__skill__slug=skill)
         if opportunity_type := params.get("type"):
             queryset = queryset.filter(opportunity_type=opportunity_type)
+        if interest := params.get("interest"):
+            queryset = queryset.filter(interests__slug=interest)
+        if commitment := params.get("commitment"):
+            queryset = queryset.filter(commitment=commitment)
 
         return with_details(queryset.distinct().order_by("-created_at"))
 
