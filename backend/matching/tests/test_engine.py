@@ -269,3 +269,19 @@ class SkillScoringTests(MatchingFixtures, TestCase):
         scores = self.scores()
 
         self.assertGreater(scores[advanced], scores[beginner])
+
+
+class InterestedEventScoringTests(MatchingFixtures, TestCase):
+    def test_students_going_to_the_event_rank_higher_and_are_told_why(self):
+        from core.testing import make_event
+
+        event = make_event(name="HackRU Spring")
+        opportunity = make_opportunity(event=event, availability=[])
+        going = self.make_student()
+        going.interested_events.set([event])
+        not_going = self.make_student()
+
+        matches = rank_candidates(opportunity)
+
+        self.assertEqual([match.candidate for match in matches], [going, not_going])
+        self.assertIn("Going to HackRU Spring", [factor.label for factor in matches[0].factors])
