@@ -38,7 +38,7 @@ class OpportunityBrowseTests(OpportunityFixtures, APITestCase):
         event = make_event(name="HackRU Fall")
         owner = make_user(display_name="Jane Doe", major="Computer Science", year="senior")
         opportunity = make_opportunity(owner=owner, event=event, interests=[self.ai])
-        role = OpportunityRole.objects.create(opportunity=opportunity, role=self.backend, slots=2, notes="Django")
+        role = OpportunityRole.objects.create(opportunity=opportunity, role=self.backend, notes="Django")
         OpportunitySkill.objects.create(opportunity=opportunity, skill=self.python, requirement_type="required")
         ConnectionRequest.objects.create(
             opportunity=opportunity, opportunity_role=role, kind="join", sender=make_user(), recipient=owner, status="accepted"
@@ -62,8 +62,9 @@ class OpportunityBrowseTests(OpportunityFixtures, APITestCase):
         self.assertEqual(item["interests"], [{"slug": "ai", "name": "AI"}])
         self.assertEqual(
             item["roles"],
-            [{"role": {"slug": "backend-developer", "name": "Backend developer"}, "slots": 2, "filled": 1, "notes": "Django"}],
+            [{"role": {"slug": "backend-developer", "name": "Backend developer"}, "notes": "Django"}],
         )
+        self.assertEqual((item["team_capacity"], item["confirmed"], item["spots_remaining"]), (4, 2, 2))
         self.assertEqual(item["skills"], [{"skill": {"slug": "python", "name": "Python"}, "requirement_type": "required"}])
         self.assertEqual(item["status"], "open")
         self.assertFalse(item["is_owner"])
@@ -166,7 +167,8 @@ class OpportunityCreateTests(OpportunityFixtures, APITestCase):
             "availability": ["weekend_morning", "weekend_afternoon"],
             "commitment": "full_event",
             "interests": ["ai"],
-            "roles": [{"role": "backend-developer", "slots": 2, "notes": "Django or FastAPI"}, {"role": "designer"}],
+            "roles": [{"role": "backend-developer", "notes": "Django or FastAPI"}, {"role": "designer"}],
+            "team_capacity": 3,
             "skills": [
                 {"skill": "python", "requirement_type": "required"},
                 {"skill": "figma", "requirement_type": "preferred"},
@@ -189,8 +191,8 @@ class OpportunityCreateTests(OpportunityFixtures, APITestCase):
         self.assertEqual(opportunity.status, "open")
         self.assertEqual(list(opportunity.interests.values_list("slug", flat=True)), ["ai"])
         self.assertEqual(
-            sorted(opportunity.roles.values_list("role__slug", "slots", "notes")),
-            [("backend-developer", 2, "Django or FastAPI"), ("designer", 1, "")],
+            sorted(opportunity.roles.values_list("role__slug", "notes")),
+            [("backend-developer", "Django or FastAPI"), ("designer", "")],
         )
         self.assertEqual(
             sorted(opportunity.opportunity_skills.values_list("skill__slug", "requirement_type")),
@@ -200,7 +202,7 @@ class OpportunityCreateTests(OpportunityFixtures, APITestCase):
         self.assertEqual(body["id"], str(opportunity.id))
         self.assertTrue(body["is_owner"])
         self.assertEqual(len(body["roles"]), 2)
-        self.assertEqual(body["roles"][0]["filled"], 0)
+        self.assertEqual((body["team_capacity"], body["confirmed"], body["spots_remaining"]), (3, 1, 2))
 
     def test_records_funnel_event(self):
         from analytics.models import FunnelEvent
@@ -222,7 +224,7 @@ class OpportunityCreateTests(OpportunityFixtures, APITestCase):
         self.assertEqual(self.post(roles=[]).status_code, 400)
 
     def test_rejects_duplicate_roles(self):
-        response = self.post(roles=[{"role": "designer"}, {"role": "designer", "slots": 2}])
+        response = self.post(roles=[{"role": "designer"}, {"role": "designer", "notes": "again"}])
 
         self.assertEqual(response.status_code, 400)
         self.assertFalse(Opportunity.objects.exists())
@@ -258,8 +260,15 @@ class OpportunityCreateTests(OpportunityFixtures, APITestCase):
     def test_rejects_invalid_availability(self):
         self.assertEqual(self.post(availability=["sometime"]).status_code, 400)
 
-    def test_rejects_invalid_slot_count(self):
-        self.assertEqual(self.post(roles=[{"role": "designer", "slots": 0}]).status_code, 400)
+    def test_rejects_invalid_team_capacity(self):
+        self.assertEqual(self.post(team_capacity=1).status_code, 400)
+        self.assertEqual(self.post(team_capacity=13).status_code, 400)
+
+    def test_team_capacity_defaults_to_four(self):
+        payload = self.payload()
+        del payload["team_capacity"]
+
+        self.assertEqual(self.client.post(self.url, payload, format="json").json()["team_capacity"], 4)
 
     def test_requires_authentication(self):
         self.client.logout()
@@ -273,7 +282,7 @@ class OpportunityDetailTests(OpportunityFixtures, APITestCase):
         self.make_catalog()
         self.viewer = self.login(make_user())
         self.opportunity = make_opportunity()
-        OpportunityRole.objects.create(opportunity=self.opportunity, role=self.backend, slots=2)
+        OpportunityRole.objects.create(opportunity=self.opportunity, role=self.backend)
 
     def get(self, opportunity=None):
         return self.client.get(f"/api/opportunities/{(opportunity or self.opportunity).id}/")
@@ -283,7 +292,7 @@ class OpportunityDetailTests(OpportunityFixtures, APITestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["id"], str(self.opportunity.id))
-        self.assertEqual(response.json()["roles"][0]["filled"], 0)
+        self.assertEqual(response.json()["confirmed"], 1)
 
     def test_closed_opportunity_hidden_from_others(self):
         self.opportunity.close(Opportunity.CloseReason.OWNER_CLOSED)
@@ -325,7 +334,7 @@ class OpportunityUpdateTests(OpportunityFixtures, APITestCase):
         self.make_catalog()
         self.owner = self.login(make_user())
         self.opportunity = make_opportunity(owner=self.owner, interests=[self.ai])
-        self.backend_role = OpportunityRole.objects.create(opportunity=self.opportunity, role=self.backend, slots=2)
+        self.backend_role = OpportunityRole.objects.create(opportunity=self.opportunity, role=self.backend)
         OpportunitySkill.objects.create(opportunity=self.opportunity, skill=self.python)
 
     def patch(self, data):
@@ -348,17 +357,17 @@ class OpportunityUpdateTests(OpportunityFixtures, APITestCase):
         self.assertEqual(self.opportunity.expires_at, expires_at)
 
     def test_updates_existing_roles_and_adds_new_ones(self):
-        response = self.patch({"roles": [{"role": "backend-developer", "slots": 3}, {"role": "designer", "slots": 1}]})
+        response = self.patch({"roles": [{"role": "backend-developer", "notes": "Django"}, {"role": "designer"}]})
 
         self.assertEqual(response.status_code, 200)
         self.backend_role.refresh_from_db()
-        self.assertEqual(self.backend_role.slots, 3)
+        self.assertEqual(self.backend_role.notes, "Django")
         self.assertEqual(sorted(self.opportunity.roles.values_list("role__slug", flat=True)), ["backend-developer", "designer"])
 
     def test_removes_roles_left_out(self):
         OpportunityRole.objects.create(opportunity=self.opportunity, role=self.designer)
 
-        response = self.patch({"roles": [{"role": "backend-developer", "slots": 2}]})
+        response = self.patch({"roles": [{"role": "backend-developer"}]})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(list(self.opportunity.roles.values_list("role__slug", flat=True)), ["backend-developer"])
@@ -366,28 +375,35 @@ class OpportunityUpdateTests(OpportunityFixtures, APITestCase):
     def test_keeps_accepted_requests_linked_to_their_role(self):
         accepted = self.accept_for(self.backend_role)
 
-        self.patch({"roles": [{"role": "backend-developer", "slots": 3}]})
+        self.patch({"roles": [{"role": "backend-developer", "notes": "Updated"}]})
 
         accepted.refresh_from_db()
         self.assertEqual(accepted.opportunity_role, self.backend_role)
 
-    def test_cannot_reduce_slots_below_filled(self):
+    def test_changes_team_capacity(self):
+        response = self.patch({"team_capacity": 6})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["spots_remaining"], 5)
+
+    def test_cannot_shrink_capacity_below_confirmed_team(self):
         self.accept_for(self.backend_role)
         self.accept_for(self.backend_role)
 
-        response = self.patch({"roles": [{"role": "backend-developer", "slots": 1}]})
+        response = self.patch({"team_capacity": 2})
 
         self.assertEqual(response.status_code, 400)
-        self.backend_role.refresh_from_db()
-        self.assertEqual(self.backend_role.slots, 2)
+        self.assertIn("team_capacity", response.json())
 
-    def test_cannot_remove_role_with_accepted_members(self):
-        self.accept_for(self.backend_role)
+    def test_removing_a_role_keeps_its_members_on_the_team(self):
+        accepted = self.accept_for(self.backend_role)
 
         response = self.patch({"roles": [{"role": "designer"}]})
 
-        self.assertEqual(response.status_code, 400)
-        self.assertTrue(OpportunityRole.objects.filter(pk=self.backend_role.pk).exists())
+        self.assertEqual(response.status_code, 200)
+        accepted.refresh_from_db()
+        self.assertEqual(accepted.status, "accepted")
+        self.assertIsNone(accepted.opportunity_role)
 
     def test_replaces_skills_and_interests(self):
         response = self.patch({"skills": [{"skill": "figma", "requirement_type": "required"}], "interests": []})

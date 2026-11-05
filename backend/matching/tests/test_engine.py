@@ -41,7 +41,7 @@ class RankCandidatesTests(MatchingFixtures, TestCase):
             commitment="full_event",
             interests=[self.ai],
         )
-        OpportunityRole.objects.create(opportunity=self.opportunity, role=self.backend, slots=1)
+        OpportunityRole.objects.create(opportunity=self.opportunity, role=self.backend)
         OpportunitySkill.objects.create(opportunity=self.opportunity, skill=self.python, requirement_type="required")
         OpportunitySkill.objects.create(opportunity=self.opportunity, skill=self.react, requirement_type="preferred")
 
@@ -161,8 +161,8 @@ class RankOpportunitiesTests(MatchingFixtures, TestCase):
         defaults = {"availability": ["weekend_morning"], "commitment": "full_event"}
         defaults.update(fields)
         opportunity = make_opportunity(**defaults)
-        for role, slots in roles:
-            OpportunityRole.objects.create(opportunity=opportunity, role=role or self.backend, slots=slots)
+        for role, _ in roles:
+            OpportunityRole.objects.create(opportunity=opportunity, role=role or self.backend)
         for skill in required:
             OpportunitySkill.objects.create(opportunity=opportunity, skill=skill, requirement_type="required")
         for skill in preferred:
@@ -205,8 +205,8 @@ class RankOpportunitiesTests(MatchingFixtures, TestCase):
 
         self.assertEqual(self.opportunities(), [declined])
 
-    def test_excludes_opportunities_with_every_role_filled(self):
-        full = self.post()
+    def test_excludes_opportunities_with_a_full_team(self):
+        full = self.post(team_capacity=2)
         ConnectionRequest.objects.create(
             opportunity=full, opportunity_role=full.roles.get(), kind="join", sender=make_user(), recipient=full.owner, status="accepted"
         )

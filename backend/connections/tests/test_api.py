@@ -16,7 +16,7 @@ class RequestFixtures:
         self.student = make_user(display_name="Student", major="Design", year="junior")
         self.opportunity = make_opportunity(owner=self.owner)
         self.backend = OpportunityRole.objects.create(
-            opportunity=self.opportunity, role=Role.objects.create(name="Backend developer"), slots=1
+            opportunity=self.opportunity, role=Role.objects.create(name="Backend developer")
         )
 
     def make_request(self, **fields):
@@ -156,11 +156,13 @@ class SendRequestTests(RequestFixtures, APITestCase):
 
         self.assertEqual(self.send(role="designer").status_code, 400)
 
-    def test_role_must_have_open_slot(self):
-        self.make_request(sender=make_user(), opportunity_role=self.backend, status="accepted")
+    def test_team_must_have_room(self):
+        self.opportunity.team_capacity = 2
+        self.opportunity.save()
+        self.make_request(sender=make_user(), status="accepted")
         self.login(self.student)
 
-        self.assertEqual(self.send(role="backend-developer").status_code, 400)
+        self.assertEqual(self.send().status_code, 400)
 
     def test_message_length_is_limited(self):
         self.login(self.student)
@@ -269,7 +271,7 @@ class AcceptRequestTests(RequestFixtures, APITestCase):
         super().setUp()
         self.make_world()
         self.designer = OpportunityRole.objects.create(
-            opportunity=self.opportunity, role=Role.objects.create(name="Designer"), slots=1
+            opportunity=self.opportunity, role=Role.objects.create(name="Designer")
         )
         self.request_ = self.make_request(opportunity_role=self.backend)
 
@@ -327,7 +329,9 @@ class AcceptRequestTests(RequestFixtures, APITestCase):
         self.assertIn("Student", to_owner.body)
         self.assertNotIn("owner#1", to_owner.body)
 
-    def test_closes_opportunity_when_every_role_is_filled(self):
+    def test_closes_opportunity_when_the_team_is_full(self):
+        self.opportunity.team_capacity = 3
+        self.opportunity.save()
         other_pending = self.make_request(sender=make_user())
         self.make_request(sender=make_user(), opportunity_role=self.designer, status="accepted")
         self.login(self.owner)
@@ -340,7 +344,7 @@ class AcceptRequestTests(RequestFixtures, APITestCase):
         self.assertEqual(self.opportunity.close_reason, "filled")
         self.assertEqual(other_pending.status, "expired")
 
-    def test_keeps_opportunity_open_while_roles_remain(self):
+    def test_keeps_opportunity_open_while_spots_remain(self):
         self.login(self.owner)
 
         self.accept()
@@ -373,7 +377,9 @@ class AcceptRequestTests(RequestFixtures, APITestCase):
         self.request_.refresh_from_db()
         self.assertEqual(self.request_.status, "pending")
 
-    def test_cannot_accept_into_full_role(self):
+    def test_cannot_accept_into_a_full_team(self):
+        self.opportunity.team_capacity = 2
+        self.opportunity.save()
         self.make_request(sender=make_user(), opportunity_role=self.backend, status="accepted")
         self.login(self.owner)
 

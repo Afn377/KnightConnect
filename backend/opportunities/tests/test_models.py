@@ -94,7 +94,7 @@ class OpportunityTests(TestCase):
     def test_role_listed_once_per_opportunity(self):
         opportunity = make_opportunity(self.owner)
         role = Role.objects.create(name="Backend developer")
-        OpportunityRole.objects.create(opportunity=opportunity, role=role, slots=2)
+        OpportunityRole.objects.create(opportunity=opportunity, role=role)
 
         with self.assertRaises(IntegrityError), transaction.atomic():
             OpportunityRole.objects.create(opportunity=opportunity, role=role)
