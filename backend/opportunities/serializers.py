@@ -24,16 +24,10 @@ class OwnerSerializer(serializers.ModelSerializer):
 
 class OpportunityRoleSerializer(serializers.ModelSerializer):
     role = CatalogSlugField(queryset=Role.objects.all())
-    filled = serializers.SerializerMethodField()
 
     class Meta:
         model = OpportunityRole
-        fields = ["role", "slots", "filled", "notes"]
-
-    def get_filled(self, obj):
-        if hasattr(obj, "filled"):
-            return obj.filled
-        return obj.connection_requests.filter(status="accepted").count() if obj.pk else 0
+        fields = ["role", "notes"]
 
 
 class OpportunitySkillSerializer(serializers.ModelSerializer):
@@ -53,6 +47,7 @@ class OpportunitySerializer(serializers.ModelSerializer):
     is_owner = serializers.SerializerMethodField()
     pending_requests = serializers.SerializerMethodField()
     confirmed = serializers.SerializerMethodField()
+    spots_remaining = serializers.SerializerMethodField()
     draft = serializers.BooleanField(
         write_only=True, required=False, help_text="On create, save as a private draft."
     )
@@ -80,8 +75,10 @@ class OpportunitySerializer(serializers.ModelSerializer):
             "skills",
             "status",
             "close_reason",
-            "pending_requests",
+            "team_capacity",
             "confirmed",
+            "spots_remaining",
+            "pending_requests",
             "expires_at",
             "draft_step",
             "draft",
@@ -123,6 +120,9 @@ class OpportunitySerializer(serializers.ModelSerializer):
         """Confirmed team members, including the owner."""
         return 1 + self._count(obj, "accepted_count", "accepted")
 
+    def get_spots_remaining(self, obj):
+        return max(0, obj.team_capacity - self.get_confirmed(obj))
+
     def get_is_owner(self, obj):
         request = self.context.get("request")
         return bool(request and obj.owner_id == request.user.id)
@@ -133,29 +133,14 @@ class OpportunitySerializer(serializers.ModelSerializer):
         slugs = [entry["role"].slug for entry in roles]
         if len(slugs) != len(set(slugs)):
             raise serializers.ValidationError("Each role can only be listed once.")
-        if self.instance is not None:
-            self._check_filled_roles_kept(roles)
         return roles
 
-    def _check_filled_roles_kept(self, roles):
-        """Roles with accepted members can't be removed or shrunk below their filled count."""
-        filled = dict(
-            ConnectionRequest.objects.filter(
-                opportunity=self.instance,
-                status=ConnectionRequest.Status.ACCEPTED,
-                opportunity_role__isnull=False,
+    def validate_team_capacity(self, capacity):
+        if self.instance is not None and capacity < self.instance.confirmed_count:
+            raise serializers.ValidationError(
+                f"Capacity can't be smaller than your confirmed team of {self.instance.confirmed_count}."
             )
-            .values_list("opportunity_role__role")
-            .annotate(count=Count("id"))
-        )
-        requested = {entry["role"].pk: entry.get("slots", 1) for entry in roles}
-        for role_id, count in filled.items():
-            if role_id not in requested:
-                raise serializers.ValidationError("A role with accepted members can't be removed.")
-            if requested[role_id] < count:
-                raise serializers.ValidationError(
-                    f"A role can't have fewer slots than its {count} accepted member(s)."
-                )
+        return capacity
 
     def validate_skills(self, skills):
         slugs = [entry["skill"].slug for entry in skills]
@@ -231,16 +216,15 @@ class OpportunitySerializer(serializers.ModelSerializer):
         return instance
 
     def _sync_roles(self, instance, roles):
-        """Update roles in place so connection requests stay linked to them."""
+        """Update roles in place so accepted requests stay linked to the role they filled."""
         existing = {role.role_id: role for role in instance.roles.all()}
         for entry in roles:
             current = existing.pop(entry["role"].pk, None)
             if current is None:
                 OpportunityRole.objects.create(opportunity=instance, **entry)
             else:
-                current.slots = entry.get("slots", 1)
                 current.notes = entry.get("notes", "")
-                current.save(update_fields=["slots", "notes"])
+                current.save(update_fields=["notes"])
         OpportunityRole.objects.filter(pk__in=[role.pk for role in existing.values()]).delete()
 
 

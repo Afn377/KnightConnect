@@ -112,6 +112,8 @@ class SendRequestSerializer(serializers.Serializer):
 
         if not opportunity.is_active:
             raise serializers.ValidationError({"opportunity": ["This opportunity isn't accepting requests."]})
+        if opportunity.is_full:
+            raise serializers.ValidationError({"opportunity": ["This team is full."]})
 
         if opportunity.owner_id == user.id:
             recipient = attrs.get("recipient")
@@ -140,7 +142,4 @@ class SendRequestSerializer(serializers.Serializer):
         role = opportunity.roles.filter(role__slug=slug).first()
         if role is None:
             raise serializers.ValidationError({"role": ["This opportunity has no such open role."]})
-        filled = role.connection_requests.filter(status=ConnectionRequest.Status.ACCEPTED).count()
-        if filled >= role.slots:
-            raise serializers.ValidationError({"role": ["This role has already been filled."]})
         return role

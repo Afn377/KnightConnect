@@ -86,6 +86,11 @@ class Opportunity(UUIDModel, TimeStampedModel):
     closed_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
     published_at = models.DateTimeField(null=True, blank=True)
+    team_capacity = models.PositiveSmallIntegerField(
+        default=4,
+        validators=[MinValueValidator(2), MaxValueValidator(12)],
+        help_text="Total team size, including the owner.",
+    )
     draft_step = models.PositiveSmallIntegerField(
         default=1,
         validators=[MinValueValidator(1), MaxValueValidator(4)],
@@ -115,6 +120,9 @@ class Opportunity(UUIDModel, TimeStampedModel):
             models.CheckConstraint(
                 condition=models.Q(status="draft") | models.Q(expires_at__isnull=False),
                 name="opp_published_has_expiry",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(team_capacity__gte=2), name="opp_team_capacity_at_least_two"
             ),
         ]
 
@@ -151,6 +159,19 @@ class Opportunity(UUIDModel, TimeStampedModel):
             and self.expires_at > timezone.now()
         )
 
+    def accepted_members(self):
+        return self.connection_requests.filter(status="accepted").count()
+
+    @property
+    def confirmed_count(self):
+        """Confirmed team size: the owner plus accepted members."""
+        accepted = getattr(self, "accepted_count", None)
+        return 1 + (accepted if accepted is not None else self.accepted_members())
+
+    @property
+    def is_full(self):
+        return self.confirmed_count >= self.team_capacity
+
     @property
     def can_accept_requests(self):
         """Whether pending requests can still be accepted.
@@ -183,23 +204,19 @@ class Opportunity(UUIDModel, TimeStampedModel):
 
 
 class OpportunityRole(models.Model):
-    """An open position on an opportunity and how many people it needs."""
+    """A role the team is looking for. Team size is set by Opportunity.team_capacity."""
 
     opportunity = models.ForeignKey(Opportunity, on_delete=models.CASCADE, related_name="roles")
     role = models.ForeignKey(Role, on_delete=models.PROTECT, related_name="opportunity_roles")
-    slots = models.PositiveSmallIntegerField(
-        default=1, validators=[MinValueValidator(1), MaxValueValidator(10)]
-    )
     notes = models.CharField(max_length=200, blank=True)
 
     class Meta:
         constraints = [
             models.UniqueConstraint(fields=["opportunity", "role"], name="opp_role_unique"),
-            models.CheckConstraint(condition=models.Q(slots__gte=1), name="opp_role_slots_positive"),
         ]
 
     def __str__(self):
-        return f"{self.opportunity}: {self.role} x{self.slots}"
+        return f"{self.opportunity}: {self.role}"
 
 
 class OpportunitySkill(models.Model):

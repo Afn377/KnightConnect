@@ -80,9 +80,7 @@ def requirements_for(opportunity):
         preferred_skills={
             s.skill_id: s.skill.name for s in skills if s.requirement_type == OpportunitySkill.Requirement.PREFERRED
         },
-        open_roles={
-            r.role_id: r.role.name for r in opportunity.roles.all() if getattr(r, "filled", 0) < r.slots
-        },
+        open_roles={} if opportunity.is_full else {r.role_id: r.role.name for r in opportunity.roles.all()},
         interests={i.pk: i.name for i in opportunity.interests.all()},
         availability=set(opportunity.availability or []),
         commitment=opportunity.commitment,

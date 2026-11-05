@@ -1,5 +1,5 @@
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Q
+from django.db.models import Q
 from django.utils import timezone
 
 from analytics.models import FunnelEvent
@@ -48,19 +48,8 @@ def send_request(*, opportunity, sender, recipient, kind, opportunity_role=None,
     return request
 
 
-def _accepted_count(opportunity_role):
-    return opportunity_role.connection_requests.filter(status=ConnectionRequest.Status.ACCEPTED).count()
-
-
-def _all_roles_filled(opportunity):
-    roles = opportunity.roles.annotate(
-        filled=Count("connection_requests", filter=Q(connection_requests__status=ConnectionRequest.Status.ACCEPTED))
-    )
-    return roles.exists() and all(role.filled >= role.slots for role in roles)
-
-
 def accept_request(connection_request, *, actor):
-    """Accept a pending request, closing the opportunity once every role is filled.
+    """Accept a pending request, closing the opportunity once the team is full.
 
     Both participants are emailed each other's contact details afterwards.
     """
@@ -72,9 +61,8 @@ def accept_request(connection_request, *, actor):
             raise Conflict("Only pending requests can be accepted.")
         if not opportunity.can_accept_requests:
             raise Conflict("This opportunity is no longer recruiting.")
-        role = connection_request.opportunity_role
-        if role is not None and _accepted_count(role) >= role.slots:
-            raise Conflict("This role has already been filled.")
+        if opportunity.is_full:
+            raise Conflict("This team is already full.")
 
         connection_request.status = ConnectionRequest.Status.ACCEPTED
         connection_request.responded_at = timezone.now()
@@ -86,7 +74,7 @@ def accept_request(connection_request, *, actor):
             connection_request=connection_request,
         )
 
-        if _all_roles_filled(opportunity):
+        if opportunity.is_full:
             close_opportunity(opportunity, Opportunity.CloseReason.FILLED)
 
     send_connection_accepted_emails(connection_request)
