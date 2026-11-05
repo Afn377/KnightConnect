@@ -51,6 +51,12 @@ class OpportunitySerializer(serializers.ModelSerializer):
     roles = OpportunityRoleSerializer(many=True)
     skills = OpportunitySkillSerializer(source="opportunity_skills", many=True, required=False)
     is_owner = serializers.SerializerMethodField()
+    draft = serializers.BooleanField(
+        write_only=True, required=False, help_text="On create, save as a private draft."
+    )
+
+    # Required to publish; optional while the post is a draft.
+    PUBLISH_REQUIRED = ["title", "opportunity_type", "commitment", "expires_at"]
 
     class Meta:
         model = Opportunity
@@ -73,16 +79,37 @@ class OpportunitySerializer(serializers.ModelSerializer):
             "status",
             "close_reason",
             "expires_at",
+            "draft_step",
+            "draft",
             "created_at",
         ]
         read_only_fields = ["id", "owner", "status", "close_reason", "created_at"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.is_draft:
+            self.fields["roles"].required = False
+            return
+        for name in self.PUBLISH_REQUIRED:
+            field = self.fields[name]
+            field.required = self.instance is None
+            if hasattr(field, "allow_blank"):
+                field.allow_blank = False
+            field.allow_null = False
+
+    @property
+    def is_draft(self):
+        if self.instance is not None and not isinstance(self.instance, (list, tuple)):
+            return getattr(self.instance, "status", None) == Opportunity.Status.DRAFT
+        data = getattr(self, "initial_data", None) or {}
+        return self.instance is None and str(data.get("draft", "")).lower() in {"true", "1"}
 
     def get_is_owner(self, obj):
         request = self.context.get("request")
         return bool(request and obj.owner_id == request.user.id)
 
     def validate_roles(self, roles):
-        if not roles:
+        if not roles and not self.is_draft:
             raise serializers.ValidationError("List at least one open role.")
         slugs = [entry["role"].slug for entry in roles]
         if len(slugs) != len(set(slugs)):
@@ -130,8 +157,13 @@ class OpportunitySerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         """Apply the model's own validation (expiry window, event deadline) to the result."""
+        attrs.pop("draft", None)
+        if self.is_draft and self.instance is None and not (attrs.get("title") or attrs.get("event")):
+            raise serializers.ValidationError("A draft needs at least a title or an event.")
         related = {"interests", "roles", "opportunity_skills"}
-        candidate = copy.copy(self.instance) if self.instance else Opportunity()
+        candidate = copy.copy(self.instance) if self.instance else Opportunity(
+            status=Opportunity.Status.DRAFT if self.is_draft else Opportunity.Status.OPEN
+        )
         for field, value in attrs.items():
             if field not in related:
                 setattr(candidate, field, value)
@@ -144,9 +176,13 @@ class OpportunitySerializer(serializers.ModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
         interests = validated_data.pop("interests", [])
-        roles = validated_data.pop("roles")
+        roles = validated_data.pop("roles", [])
         skills = validated_data.pop("opportunity_skills", [])
 
+        if self.is_draft:
+            validated_data["status"] = Opportunity.Status.DRAFT
+        else:
+            validated_data["published_at"] = timezone.now()
         opportunity = Opportunity.objects.create(owner=self.context["request"].user, **validated_data)
         opportunity.interests.set(interests)
         OpportunityRole.objects.bulk_create(

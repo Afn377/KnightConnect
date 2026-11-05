@@ -36,6 +36,7 @@ class Opportunity(UUIDModel, TimeStampedModel):
         OTHER = "other", "Other"
 
     class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
         OPEN = "open", "Open"
         CLOSED = "closed", "Closed"
         EXPIRED = "expired", "Expired"
@@ -57,7 +58,9 @@ class Opportunity(UUIDModel, TimeStampedModel):
         related_name="opportunities",
         help_text="Leave empty for projects not tied to a specific event.",
     )
-    title = models.CharField(max_length=120)
+    # Title, type, commitment, and expiry may be blank while the post is a draft;
+    # serializers require them when creating or publishing a post.
+    title = models.CharField(max_length=120, blank=True)
     description = models.TextField(
         max_length=4000, blank=True, help_text="Project overview: the track and what the team wants to build."
     )
@@ -68,11 +71,11 @@ class Opportunity(UUIDModel, TimeStampedModel):
     location_type = models.CharField(
         max_length=10, choices=LocationType.choices, default=LocationType.IN_PERSON
     )
-    opportunity_type = models.CharField(max_length=20, choices=Type.choices)
+    opportunity_type = models.CharField(max_length=20, choices=Type.choices, blank=True)
     availability = models.JSONField(
         default=list, blank=True, validators=[validate_availability_slots]
     )
-    commitment = models.CharField(max_length=20, choices=Commitment.choices)
+    commitment = models.CharField(max_length=20, choices=Commitment.choices, blank=True)
     interests = models.ManyToManyField(Interest, blank=True, related_name="opportunities")
     skills = models.ManyToManyField(
         Skill, through="OpportunitySkill", blank=True, related_name="opportunities"
@@ -81,7 +84,13 @@ class Opportunity(UUIDModel, TimeStampedModel):
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN)
     close_reason = models.CharField(max_length=20, choices=CloseReason.choices, blank=True)
     closed_at = models.DateTimeField(null=True, blank=True)
-    expires_at = models.DateTimeField()
+    expires_at = models.DateTimeField(null=True, blank=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+    draft_step = models.PositiveSmallIntegerField(
+        default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(4)],
+        help_text="The step of the posting form a draft was saved on.",
+    )
 
     objects = OpportunityQuerySet.as_manager()
 
@@ -94,10 +103,18 @@ class Opportunity(UUIDModel, TimeStampedModel):
         constraints = [
             models.CheckConstraint(
                 condition=(
-                    models.Q(status="open", close_reason="", closed_at__isnull=True)
-                    | (~models.Q(status="open") & ~models.Q(close_reason="") & models.Q(closed_at__isnull=False))
+                    models.Q(status__in=["open", "draft"], close_reason="", closed_at__isnull=True)
+                    | (
+                        ~models.Q(status__in=["open", "draft"])
+                        & ~models.Q(close_reason="")
+                        & models.Q(closed_at__isnull=False)
+                    )
                 ),
                 name="opp_close_fields_match_status",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status="draft") | models.Q(expires_at__isnull=False),
+                name="opp_published_has_expiry",
             ),
         ]
 
@@ -111,8 +128,13 @@ class Opportunity(UUIDModel, TimeStampedModel):
         now = timezone.now()
         if self._state.adding and self.expires_at <= now:
             raise ValidationError({"expires_at": "Expiry must be in the future."})
-        # Measured from creation so repeated edits can't keep an opportunity open indefinitely.
-        if self.expires_at > (self.created_at or now) + MAX_OPPORTUNITY_LIFETIME:
+        # Measured from publication so repeated edits can't keep an opportunity open
+        # indefinitely; a draft's clock starts when it is published.
+        if self.status == self.Status.DRAFT:
+            start = now
+        else:
+            start = self.published_at or self.created_at or now
+        if self.expires_at > start + MAX_OPPORTUNITY_LIFETIME:
             raise ValidationError(
                 {"expires_at": f"Opportunities can be open for at most {MAX_OPPORTUNITY_LIFETIME.days} days."}
             )
@@ -123,7 +145,11 @@ class Opportunity(UUIDModel, TimeStampedModel):
 
     @property
     def is_active(self):
-        return self.status == self.Status.OPEN and self.expires_at > timezone.now()
+        return (
+            self.status == self.Status.OPEN
+            and self.expires_at is not None
+            and self.expires_at > timezone.now()
+        )
 
     def close(self, reason, *, save=True):
         status = self.Status.EXPIRED if reason == self.CloseReason.EXPIRED else self.Status.CLOSED

@@ -1,6 +1,7 @@
 from django.db.models import Q
 from rest_framework import generics
-from rest_framework.exceptions import PermissionDenied
+from django.core.exceptions import ValidationError as DjangoValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
 from analytics.models import FunnelEvent
@@ -10,7 +11,7 @@ from core.exceptions import Conflict
 from .models import Opportunity
 from .queries import browsable_by, viewable_by, with_details
 from .serializers import OpportunitySerializer
-from .services import close_opportunity
+from .services import close_opportunity, publish_opportunity
 
 
 class OpportunityListView(generics.ListCreateAPIView):
@@ -55,9 +56,10 @@ class OpportunityListView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         opportunity = serializer.save()
-        FunnelEvent.record(
-            FunnelEvent.Type.OPPORTUNITY_CREATED, user=self.request.user, opportunity=opportunity
-        )
+        if opportunity.status == Opportunity.Status.OPEN:
+            FunnelEvent.record(
+                FunnelEvent.Type.OPPORTUNITY_CREATED, user=self.request.user, opportunity=opportunity
+            )
 
 
 class OpportunityDetailView(generics.RetrieveUpdateAPIView):
@@ -73,7 +75,7 @@ class OpportunityDetailView(generics.RetrieveUpdateAPIView):
         opportunity = self.get_object()
         if opportunity.owner_id != request.user.id:
             raise PermissionDenied("Only the owner can edit this opportunity.")
-        if not opportunity.is_active:
+        if opportunity.status != Opportunity.Status.DRAFT and not opportunity.is_active:
             raise Conflict("Closed or expired opportunities can't be edited.")
         return super().update(request, *args, **kwargs)
 
@@ -108,3 +110,25 @@ class MyOpportunitiesView(generics.ListAPIView):
         if status := self.request.query_params.get("status"):
             queryset = queryset.filter(status=status)
         return with_details(queryset.order_by("-created_at"))
+
+
+class OpportunityPublishView(generics.GenericAPIView):
+    """Publish a draft once it has everything a post needs."""
+
+    serializer_class = OpportunitySerializer
+
+    def get_queryset(self):
+        return viewable_by(self.request.user)
+
+    def post(self, request, *args, **kwargs):
+        opportunity = self.get_object()
+        if opportunity.owner_id != request.user.id:
+            raise PermissionDenied("Only the owner can publish this opportunity.")
+        if opportunity.status != Opportunity.Status.DRAFT:
+            raise Conflict("Only drafts can be published.")
+        try:
+            publish_opportunity(opportunity, actor=request.user)
+        except DjangoValidationError as error:
+            raise ValidationError(error.message_dict)
+        opportunity = with_details(Opportunity.objects.filter(pk=opportunity.pk)).get()
+        return Response(self.get_serializer(opportunity).data)
