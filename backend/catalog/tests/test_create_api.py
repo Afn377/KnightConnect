@@ -1,4 +1,4 @@
-from catalog.models import Role, Skill
+from catalog.models import Interest, Role, Skill
 from core.testing import APITestCase, make_user, throttle_rates
 
 
@@ -65,3 +65,16 @@ class RoleCreateTests(APITestCase):
         self.assertEqual(created.json(), {"slug": "hardware-hacker", "name": "Hardware hacker"})
         self.assertEqual(existing.status_code, 200)
         self.assertEqual(Role.objects.count(), 1)
+
+
+class InterestCreateTests(APITestCase):
+    def test_adds_or_returns_an_interest(self):
+        self.login(make_user())
+
+        created = self.client.post("/api/interests/", {"name": "Web3"}, format="json")
+        existing = self.client.post("/api/interests/", {"name": "web3"}, format="json")
+
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.json(), {"slug": "web3", "name": "Web3"})
+        self.assertEqual(existing.status_code, 200)
+        self.assertEqual(Interest.objects.count(), 1)
