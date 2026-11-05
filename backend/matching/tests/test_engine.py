@@ -227,3 +227,45 @@ class RankOpportunitiesTests(MatchingFixtures, TestCase):
         self.assertIn("React experience", labels)
         self.assertIn("Fits the Backend developer role", labels)
         self.assertIn("Interested in AI", labels)
+
+
+class SkillScoringTests(MatchingFixtures, TestCase):
+    def setUp(self):
+        self.make_catalog()
+        self.opportunity = make_opportunity(availability=[], commitment="full_event")
+        OpportunitySkill.objects.create(opportunity=self.opportunity, skill=self.python, requirement_type="required")
+        OpportunitySkill.objects.create(opportunity=self.opportunity, skill=self.react, requirement_type="preferred")
+
+    def student_with(self, *skills):
+        student = make_user(availability=["weekend_morning"], commitment="full_event")
+        for skill, proficiency in skills:
+            UserSkill.objects.create(user=student, skill=skill, proficiency=proficiency)
+        return student
+
+    def scores(self):
+        return {match.candidate: match.score for match in rank_candidates(self.opportunity)}
+
+    def test_higher_proficiency_scores_higher(self):
+        advanced = self.student_with((self.python, "advanced"), (self.react, "advanced"))
+        beginner = self.student_with((self.python, "beginner"), (self.react, "beginner"))
+
+        scores = self.scores()
+
+        self.assertGreater(scores[advanced], scores[beginner])
+
+    def test_required_skills_weigh_more_than_preferred(self):
+        strong_required = self.student_with((self.python, "advanced"))
+        weak_both = self.student_with((self.python, "beginner"), (self.react, "beginner"))
+
+        scores = self.scores()
+
+        self.assertGreater(scores[strong_required], scores[weak_both])
+
+    def test_skill_factor_applies_with_only_required_skills(self):
+        OpportunitySkill.objects.filter(requirement_type="preferred").delete()
+        advanced = self.student_with((self.python, "advanced"))
+        beginner = self.student_with((self.python, "beginner"))
+
+        scores = self.scores()
+
+        self.assertGreater(scores[advanced], scores[beginner])
