@@ -4,8 +4,8 @@ from django.db.models import Q
 from django.utils import timezone
 
 from accounts.models import LoginCode, User
-from opportunities.models import Opportunity
 from connections.models import ConnectionRequest
+from opportunities.models import Opportunity
 from opportunities.services import close_opportunity, expire_pending_requests
 
 LOGIN_CODE_RETENTION = timedelta(days=1)
