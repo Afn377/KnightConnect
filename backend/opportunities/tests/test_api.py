@@ -84,11 +84,11 @@ class OpportunityBrowseTests(OpportunityFixtures, APITestCase):
 
         self.assertEqual(self.titles(), {"Visible"})
 
-    def test_newest_first(self):
+    def test_newest_first_when_sorted_by_newest(self):
         make_opportunity(title="Older")
         make_opportunity(title="Newer")
 
-        self.assertEqual([item["title"] for item in self.browse()["results"]], ["Newer", "Older"])
+        self.assertEqual([item["title"] for item in self.browse(sort="newest")["results"]], ["Newer", "Older"])
 
     def test_filters_by_event(self):
         event = make_event(name="HackRU Fall")
