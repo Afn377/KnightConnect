@@ -4,3 +4,5 @@ django-cors-headers>=4.9,<5
 dj-database-url>=3.0,<4
 psycopg[binary]>=3.2,<4
 python-dotenv>=1.1,<2
+django-storages[s3]>=1.14,<2
+Pillow>=11,<13

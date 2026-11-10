@@ -4,7 +4,7 @@ from django.test import TestCase, override_settings
 
 from catalog.models import Skill
 
-from .models import ContactMethod, User, UserSkill
+from ..models import ContactMethod, User, UserSkill
 
 
 class UserManagerTests(TestCase):
@@ -63,7 +63,7 @@ class ProfileTests(TestCase):
 
         self.user.display_name = "Scarlet Knight"
         self.user.availability = ["weekend_afternoon"]
-        self.user.commitment = "moderate"
+        self.user.commitment = "partial"
 
         self.assertTrue(self.user.is_profile_complete)
 

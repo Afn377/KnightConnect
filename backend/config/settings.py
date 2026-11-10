@@ -71,6 +71,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "accounts.middleware.LastSeenMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -141,6 +142,38 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+
+# Uploaded media (profile pictures)
+# Stored in Cloudflare R2 (S3-compatible) when R2_BUCKET is set, and in a
+# local folder otherwise. Serverless hosts like Vercel can't keep local files.
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+AVATAR_MAX_UPLOAD_BYTES = int(os.environ.get("AVATAR_MAX_UPLOAD_BYTES", str(5 * 1024 * 1024)))
+
+if os.environ.get("R2_BUCKET"):
+    _default_storage = {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": {
+            "bucket_name": os.environ["R2_BUCKET"],
+            "endpoint_url": f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com",
+            "access_key": os.environ["R2_ACCESS_KEY_ID"],
+            "secret_key": os.environ["R2_SECRET_ACCESS_KEY"],
+            "region_name": "auto",
+            # Public bucket URL or custom domain, e.g. pub-xxxx.r2.dev or media.example.com
+            "custom_domain": os.environ.get("R2_PUBLIC_DOMAIN"),
+            "querystring_auth": False,
+            "file_overwrite": False,
+        },
+    }
+else:
+    _default_storage = {"BACKEND": "django.core.files.storage.FileSystemStorage"}
+
+STORAGES = {
+    "default": _default_storage,
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
@@ -171,13 +204,23 @@ CORS_ALLOW_CREDENTIALS = True
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.SessionAuthentication",
+        "core.authentication.SessionAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
+    "DEFAULT_THROTTLE_RATES": {
+        # Login code requests, per client (user or IP) and per target email.
+        "login_code": os.environ.get("THROTTLE_LOGIN_CODE", "20/hour"),
+        "login_code_email": os.environ.get("THROTTLE_LOGIN_CODE_EMAIL", "5/hour"),
+        "login_verify": os.environ.get("THROTTLE_LOGIN_VERIFY", "30/hour"),
+        "report": os.environ.get("THROTTLE_REPORT", "10/day"),
+        "connection_request": os.environ.get("THROTTLE_CONNECTION_REQUEST", "30/day"),
+        "analytics": os.environ.get("THROTTLE_ANALYTICS", "600/hour"),
+        "catalog_create": os.environ.get("THROTTLE_CATALOG_CREATE", "30/day"),
+    },
 }
 
 
@@ -196,3 +239,32 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "KnightConnect <no-rep
 ALLOWED_EMAIL_DOMAINS = env_list(
     "ALLOWED_EMAIL_DOMAINS", "rutgers.edu,scarletmail.rutgers.edu"
 )
+
+LOGIN_CODE_LENGTH = 6
+LOGIN_CODE_TTL_MINUTES = int(os.environ.get("LOGIN_CODE_TTL_MINUTES", "10"))
+LOGIN_CODE_MAX_ATTEMPTS = int(os.environ.get("LOGIN_CODE_MAX_ATTEMPTS", "5"))
+
+# Deleted accounts can be restored by signing in again within this window.
+ACCOUNT_DELETION_GRACE_DAYS = int(os.environ.get("ACCOUNT_DELETION_GRACE_DAYS", "3"))
+
+
+# Shared secret Vercel Cron sends as "Authorization: Bearer <secret>" when calling
+# /api/internal/maintenance/. The endpoint refuses every call while it is unset.
+CRON_SECRET = os.environ.get("CRON_SECRET", "")
+
+
+# Matching
+# Relative importance of each scoring factor. Factors that don't apply to a
+# pairing (e.g. an opportunity with no preferred skills) are left out and the
+# remaining weights are renormalized, so scores always fall between 0 and 1.
+MATCHING_WEIGHTS = {
+    "skills": 0.30,
+    "role": 0.25,
+    "event": 0.15,
+    "availability": 0.20,
+    "interests": 0.15,
+    "commitment": 0.10,
+}
+MATCHING_RESULT_LIMIT = int(os.environ.get("MATCHING_RESULT_LIMIT", "20"))
+# Fewer results than this are flagged as sparse so the frontend can explain them.
+MATCHING_SPARSE_THRESHOLD = 3

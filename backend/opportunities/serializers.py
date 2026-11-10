@@ -1,0 +1,262 @@
+import copy
+
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
+from django.db.models import Count
+from django.utils import timezone
+from rest_framework import serializers
+
+from accounts.models import User
+from accounts.serializers import avatar_url
+from catalog.models import Event, Interest, Role, Skill
+from catalog.serializers import CatalogSlugField
+from core.windows import normalize_windows
+from connections.models import ConnectionRequest
+
+from .models import Opportunity, OpportunityRole, OpportunitySkill
+
+
+class OwnerSerializer(serializers.ModelSerializer):
+    """Compact user summary shown on cards: name, major, year, and picture."""
+
+    avatar_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ["id", "display_name", "major", "year", "avatar_url"]
+
+    def get_avatar_url(self, user):
+        return avatar_url(self, user)
+
+
+class OpportunityRoleSerializer(serializers.ModelSerializer):
+    role = CatalogSlugField(queryset=Role.objects.all())
+
+    class Meta:
+        model = OpportunityRole
+        fields = ["role", "notes"]
+
+
+class OpportunitySkillSerializer(serializers.ModelSerializer):
+    skill = CatalogSlugField(queryset=Skill.objects.all())
+
+    class Meta:
+        model = OpportunitySkill
+        fields = ["skill", "requirement_type"]
+
+
+class OpportunitySerializer(serializers.ModelSerializer):
+    owner = OwnerSerializer(read_only=True)
+    event = CatalogSlugField(queryset=Event.objects.all(), allow_null=True, required=False)
+    interests = CatalogSlugField(many=True, queryset=Interest.objects.all(), required=False)
+    roles = OpportunityRoleSerializer(many=True)
+    skills = OpportunitySkillSerializer(source="opportunity_skills", many=True, required=False)
+    is_owner = serializers.SerializerMethodField()
+    pending_requests = serializers.SerializerMethodField()
+    confirmed = serializers.SerializerMethodField()
+    spots_remaining = serializers.SerializerMethodField()
+    match = serializers.SerializerMethodField()
+    draft = serializers.BooleanField(
+        write_only=True, required=False, help_text="On create, save as a private draft."
+    )
+
+    # Required to publish; optional while the post is a draft.
+    PUBLISH_REQUIRED = ["title", "opportunity_type", "commitment", "expires_at"]
+
+    class Meta:
+        model = Opportunity
+        fields = [
+            "id",
+            "owner",
+            "is_owner",
+            "title",
+            "description",
+            "project_ideas",
+            "required_availability",
+            "location_type",
+            "opportunity_type",
+            "event",
+            "availability",
+            "event_availability",
+            "commitment",
+            "interests",
+            "roles",
+            "skills",
+            "match",
+            "status",
+            "close_reason",
+            "team_capacity",
+            "confirmed",
+            "spots_remaining",
+            "pending_requests",
+            "expires_at",
+            "draft_step",
+            "draft",
+            "created_at",
+        ]
+        read_only_fields = ["id", "owner", "status", "close_reason", "created_at"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.is_draft:
+            self.fields["roles"].required = False
+            return
+        for name in self.PUBLISH_REQUIRED:
+            field = self.fields[name]
+            field.required = self.instance is None
+            if hasattr(field, "allow_blank"):
+                field.allow_blank = False
+            field.allow_null = False
+
+    @property
+    def is_draft(self):
+        if self.instance is not None and not isinstance(self.instance, (list, tuple)):
+            return getattr(self.instance, "status", None) == Opportunity.Status.DRAFT
+        data = getattr(self, "initial_data", None) or {}
+        return self.instance is None and str(data.get("draft", "")).lower() in {"true", "1"}
+
+    def _count(self, obj, attribute, status):
+        if hasattr(obj, attribute):
+            return getattr(obj, attribute)
+        return obj.connection_requests.filter(status=status).count() if obj.pk else 0
+
+    def get_pending_requests(self, obj):
+        """Pending requests on the post; only its owner sees this."""
+        if not self.get_is_owner(obj):
+            return None
+        return self._count(obj, "pending_count", "pending")
+
+    def get_confirmed(self, obj):
+        """Confirmed team members, including the owner."""
+        return 1 + self._count(obj, "accepted_count", "accepted")
+
+    def get_match(self, obj):
+        """Set by browse: how well the post fits the viewer and why."""
+        return getattr(obj, "match", None)
+
+    def get_spots_remaining(self, obj):
+        return max(0, obj.team_capacity - self.get_confirmed(obj))
+
+    def get_is_owner(self, obj):
+        request = self.context.get("request")
+        return bool(request and obj.owner_id == request.user.id)
+
+    def validate_roles(self, roles):
+        if not roles and not self.is_draft:
+            raise serializers.ValidationError("List at least one open role.")
+        slugs = [entry["role"].slug for entry in roles]
+        if len(slugs) != len(set(slugs)):
+            raise serializers.ValidationError("Each role can only be listed once.")
+        return roles
+
+    def validate_event_availability(self, windows):
+        try:
+            return normalize_windows(windows)
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(error.messages)
+
+    def validate_team_capacity(self, capacity):
+        if self.instance is not None and capacity < self.instance.confirmed_count:
+            raise serializers.ValidationError(
+                f"Capacity can't be smaller than your confirmed team of {self.instance.confirmed_count}."
+            )
+        return capacity
+
+    def validate_skills(self, skills):
+        slugs = [entry["skill"].slug for entry in skills]
+        if len(slugs) != len(set(slugs)):
+            raise serializers.ValidationError("Each skill can only be listed once.")
+        return skills
+
+    def validate_event(self, event):
+        unchanged = self.instance is not None and self.instance.event_id == getattr(event, "pk", None)
+        if event is not None and not unchanged and not event.is_recruiting:
+            raise serializers.ValidationError("This event is no longer recruiting.")
+        return event
+
+    def validate_expires_at(self, expires_at):
+        if expires_at <= timezone.now():
+            raise serializers.ValidationError("Expiry must be in the future.")
+        return expires_at
+
+    def validate(self, attrs):
+        """Apply the model's own validation (expiry window, event deadline) to the result."""
+        attrs.pop("draft", None)
+        if self.is_draft and self.instance is None and not (attrs.get("title") or attrs.get("event")):
+            raise serializers.ValidationError("A draft needs at least a title or an event.")
+        related = {"interests", "roles", "opportunity_skills"}
+        candidate = copy.copy(self.instance) if self.instance else Opportunity(
+            status=Opportunity.Status.DRAFT if self.is_draft else Opportunity.Status.OPEN
+        )
+        for field, value in attrs.items():
+            if field not in related:
+                setattr(candidate, field, value)
+        try:
+            candidate.clean()
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(error.message_dict)
+        return attrs
+
+    @transaction.atomic
+    def create(self, validated_data):
+        interests = validated_data.pop("interests", [])
+        roles = validated_data.pop("roles", [])
+        skills = validated_data.pop("opportunity_skills", [])
+
+        if self.is_draft:
+            validated_data["status"] = Opportunity.Status.DRAFT
+        else:
+            validated_data["published_at"] = timezone.now()
+        opportunity = Opportunity.objects.create(owner=self.context["request"].user, **validated_data)
+        opportunity.interests.set(interests)
+        OpportunityRole.objects.bulk_create(
+            OpportunityRole(opportunity=opportunity, **entry) for entry in roles
+        )
+        OpportunitySkill.objects.bulk_create(
+            OpportunitySkill(opportunity=opportunity, **entry) for entry in skills
+        )
+        return opportunity
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        interests = validated_data.pop("interests", None)
+        roles = validated_data.pop("roles", None)
+        skills = validated_data.pop("opportunity_skills", None)
+
+        instance = super().update(instance, validated_data)
+        if interests is not None:
+            instance.interests.set(interests)
+        if roles is not None:
+            self._sync_roles(instance, roles)
+        if skills is not None:
+            instance.opportunity_skills.all().delete()
+            OpportunitySkill.objects.bulk_create(
+                OpportunitySkill(opportunity=instance, **entry) for entry in skills
+            )
+        return instance
+
+    def _sync_roles(self, instance, roles):
+        """Update roles in place so accepted requests stay linked to the role they filled."""
+        existing = {role.role_id: role for role in instance.roles.all()}
+        for entry in roles:
+            current = existing.pop(entry["role"].pk, None)
+            if current is None:
+                OpportunityRole.objects.create(opportunity=instance, **entry)
+            else:
+                current.notes = entry.get("notes", "")
+                current.save(update_fields=["notes"])
+        OpportunityRole.objects.filter(pk__in=[role.pk for role in existing.values()]).delete()
+
+
+class TeamMemberSerializer(serializers.Serializer):
+    id = serializers.UUIDField(source="user.id")
+    display_name = serializers.CharField(source="user.display_name")
+    major = serializers.CharField(source="user.major")
+    year = serializers.CharField(source="user.year")
+    is_owner = serializers.BooleanField()
+    role = serializers.SerializerMethodField()
+    confirmed_at = serializers.DateTimeField()
+
+    def get_role(self, member):
+        role = member["role"]
+        return {"slug": role.slug, "name": role.name} if role else None
