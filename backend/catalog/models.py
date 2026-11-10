@@ -9,6 +9,7 @@ from django.db.models.functions import Lower
 from django.utils import timezone
 from django.utils.text import slugify
 
+from core.choices import LocationType
 from core.models import TimeStampedModel
 
 
@@ -56,8 +57,25 @@ class Interest(SluggedName):
         ]
 
 
+class EventQuerySet(models.QuerySet):
+    def with_status(self, status):
+        now = timezone.now()
+        if status == Event.Status.UPCOMING:
+            return self.filter(starts_at__gt=now)
+        if status == Event.Status.ONGOING:
+            return self.filter(starts_at__lte=now, ends_at__gt=now)
+        if status == Event.Status.PAST:
+            return self.filter(ends_at__lte=now)
+        return self.none()
+
+
 class Event(TimeStampedModel):
     """A hackathon or other recruiting window that opportunities belong to."""
+
+    class Status(models.TextChoices):
+        UPCOMING = "upcoming", "Upcoming"
+        ONGOING = "ongoing", "Ongoing"
+        PAST = "past", "Past"
 
     name = models.CharField(max_length=120)
     slug = models.SlugField(max_length=120, unique=True)
@@ -68,6 +86,12 @@ class Event(TimeStampedModel):
         help_text="Opportunities tied to this event expire no later than this time.",
     )
     is_active = models.BooleanField(default=True)
+    location_type = models.CharField(
+        max_length=10, choices=LocationType.choices, default=LocationType.IN_PERSON
+    )
+    venue = models.CharField(max_length=120, blank=True)
+
+    objects = EventQuerySet.as_manager()
 
     class Meta:
         ordering = ["starts_at"]
@@ -86,6 +110,15 @@ class Event(TimeStampedModel):
         if not self.slug:
             self.slug = slugify(self.name)
         super().save(*args, **kwargs)
+
+    @property
+    def status(self):
+        now = timezone.now()
+        if now < self.starts_at:
+            return self.Status.UPCOMING
+        if now < self.ends_at:
+            return self.Status.ONGOING
+        return self.Status.PAST
 
     @property
     def is_recruiting(self):

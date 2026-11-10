@@ -1,14 +1,21 @@
+import uuid
+
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import PermissionsMixin
 from django.db import models
 
-from catalog.models import Interest, Role, Skill
+from catalog.models import Event, Interest, Role, Skill
 from core.choices import Commitment
 from core.models import TimeStampedModel, UUIDModel
 from core.validators import validate_availability_slots
+from core.windows import validate_windows
 
 from .managers import UserManager
 from .validators import validate_rutgers_email
+
+
+def avatar_path(user, filename):
+    return f"avatars/{user.id}/{uuid.uuid4().hex}.jpg"
 
 
 class User(UUIDModel, AbstractBaseUser, PermissionsMixin, TimeStampedModel):
@@ -24,7 +31,17 @@ class User(UUIDModel, AbstractBaseUser, PermissionsMixin, TimeStampedModel):
         unique=True,
         validators=[validate_rutgers_email],
     )
+    class Year(models.TextChoices):
+        FRESHMAN = "freshman", "Freshman"
+        SOPHOMORE = "sophomore", "Sophomore"
+        JUNIOR = "junior", "Junior"
+        SENIOR = "senior", "Senior"
+        GRAD = "grad", "Graduate student"
+
     display_name = models.CharField(max_length=80, blank=True)
+    major = models.CharField(max_length=100, blank=True)
+    year = models.CharField(max_length=10, choices=Year.choices, blank=True)
+    avatar = models.ImageField(upload_to=avatar_path, blank=True)
     bio = models.TextField(max_length=1000, blank=True)
 
     open_to_requests = models.BooleanField(
@@ -41,11 +58,20 @@ class User(UUIDModel, AbstractBaseUser, PermissionsMixin, TimeStampedModel):
 
     preferred_roles = models.ManyToManyField(Role, blank=True, related_name="users")
     interests = models.ManyToManyField(Interest, blank=True, related_name="users")
+    interested_events = models.ManyToManyField(
+        Event, through="EventInterest", blank=True, related_name="interested_users"
+    )
     skills = models.ManyToManyField(Skill, through="UserSkill", blank=True, related_name="users")
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     last_seen_at = models.DateTimeField(null=True, blank=True)
+    deletion_scheduled_for = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When set, the account is hidden and will be permanently deleted at this time "
+        "unless the user signs in again first.",
+    )
 
     objects = UserManager()
 
@@ -69,6 +95,29 @@ class User(UUIDModel, AbstractBaseUser, PermissionsMixin, TimeStampedModel):
         return bool(self.display_name and self.availability and self.commitment)
 
 
+class EventInterest(models.Model):
+    """An event a student plans to attend, and when they're available during it."""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="event_interests")
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="event_interests")
+    full_event = models.BooleanField(default=True)
+    windows = models.JSONField(
+        default=list,
+        blank=True,
+        validators=[validate_windows],
+        help_text="Day windows on event dates; used when full_event is false.",
+    )
+
+    class Meta:
+        ordering = ["event__starts_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "event"], name="accounts_eventinterest_unique"),
+        ]
+
+    def __str__(self):
+        return f"{self.user} at {self.event}"
+
+
 class UserSkill(models.Model):
     class Proficiency(models.TextChoices):
         BEGINNER = "beginner", "Beginner"
@@ -82,6 +131,7 @@ class UserSkill(models.Model):
     )
 
     class Meta:
+        ordering = ["skill__name"]
         constraints = [
             models.UniqueConstraint(fields=["user", "skill"], name="accounts_userskill_unique"),
         ]
@@ -122,3 +172,24 @@ class ContactMethod(TimeStampedModel):
 
     def __str__(self):
         return f"{self.get_kind_display()}: {self.value}"
+
+
+class LoginCode(models.Model):
+    """A one-time sign-in code emailed to a Rutgers address.
+
+    Only an HMAC of the code is stored. Requesting a new code replaces any
+    outstanding one for the same email.
+    """
+
+    email = models.EmailField(db_index=True)
+    code_hash = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+    consumed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Login code for {self.email}"

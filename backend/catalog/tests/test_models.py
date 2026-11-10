@@ -4,7 +4,7 @@ from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.utils import timezone
 
-from .models import Event, Skill
+from ..models import Event, Skill
 
 
 class SkillTests(TestCase):

@@ -27,7 +27,14 @@ class ConnectionRequest(UUIDModel, TimeStampedModel):
         EXPIRED = "expired", "Expired"
 
     opportunity = models.ForeignKey(
-        Opportunity, on_delete=models.CASCADE, related_name="connection_requests"
+        Opportunity,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="connection_requests",
+        help_text="Null once the owner deletes the post; accepted connections are kept.",
+    )
+    opportunity_title = models.CharField(
+        max_length=120, blank=True, help_text="Copy of the post title, kept if the post is deleted."
     )
     opportunity_role = models.ForeignKey(
         OpportunityRole,
@@ -68,6 +75,11 @@ class ConnectionRequest(UUIDModel, TimeStampedModel):
 
     def __str__(self):
         return f"{self.get_kind_display()} {self.sender} -> {self.recipient} ({self.status})"
+
+    def save(self, *args, **kwargs):
+        if self.opportunity_id and not self.opportunity_title:
+            self.opportunity_title = self.opportunity.title
+        super().save(*args, **kwargs)
 
     @property
     def candidate(self):

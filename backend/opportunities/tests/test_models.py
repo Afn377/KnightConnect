@@ -8,7 +8,7 @@ from django.utils import timezone
 from accounts.models import User
 from catalog.models import Event, Role
 
-from .models import Opportunity, OpportunityRole
+from ..models import Opportunity, OpportunityRole
 
 
 def make_opportunity(owner, **overrides):
@@ -17,7 +17,7 @@ def make_opportunity(owner, **overrides):
         "title": "HackRU Teammates Needed",
         "description": "Looking for teammates for HackRU.",
         "opportunity_type": Opportunity.Type.HACKATHON,
-        "commitment": "full_event",
+        "commitment": "full",
         "availability": ["weekend_morning", "weekend_afternoon"],
         "expires_at": timezone.now() + timedelta(days=3),
     }
@@ -57,7 +57,7 @@ class OpportunityTests(TestCase):
             title="t",
             description="d",
             opportunity_type="other",
-            commitment="light",
+            commitment="partial",
             expires_at=timezone.now() - timedelta(hours=1),
         )
         with self.assertRaises(ValidationError):
@@ -84,7 +84,7 @@ class OpportunityTests(TestCase):
             title="t",
             description="d",
             opportunity_type="hackathon",
-            commitment="full_event",
+            commitment="full",
             expires_at=now + timedelta(days=5),
         )
 
@@ -94,7 +94,7 @@ class OpportunityTests(TestCase):
     def test_role_listed_once_per_opportunity(self):
         opportunity = make_opportunity(self.owner)
         role = Role.objects.create(name="Backend developer")
-        OpportunityRole.objects.create(opportunity=opportunity, role=role, slots=2)
+        OpportunityRole.objects.create(opportunity=opportunity, role=role)
 
         with self.assertRaises(IntegrityError), transaction.atomic():
             OpportunityRole.objects.create(opportunity=opportunity, role=role)

@@ -1,7 +1,26 @@
 from django.contrib.auth.base_user import BaseUserManager
+from django.db import models
 
 
-class UserManager(BaseUserManager):
+class UserQuerySet(models.QuerySet):
+    def active_accounts(self):
+        """Accounts that are enabled and not scheduled for deletion."""
+        return self.filter(is_active=True, deletion_scheduled_for__isnull=True)
+
+    def visible_to(self, viewer):
+        """Active accounts with no block in either direction between them and ``viewer``."""
+        from safety.models import Block
+
+        blocked_by_viewer = Block.objects.filter(blocker=viewer).values("blocked")
+        blocking_viewer = Block.objects.filter(blocked=viewer).values("blocker")
+        return (
+            self.active_accounts()
+            .exclude(pk__in=blocked_by_viewer)
+            .exclude(pk__in=blocking_viewer)
+        )
+
+
+class UserManager(BaseUserManager.from_queryset(UserQuerySet)):
     """Manager for email-based users.
 
     Students sign in with one-time codes, so regular users are created

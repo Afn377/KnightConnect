@@ -6,7 +6,7 @@ from django.utils import timezone
 from accounts.models import User
 from opportunities.models import Opportunity
 
-from .models import FunnelEvent
+from ..models import FunnelEvent
 
 
 class FunnelEventTests(TestCase):
@@ -25,7 +25,7 @@ class FunnelEventTests(TestCase):
             title="t",
             description="d",
             opportunity_type="other",
-            commitment="light",
+            commitment="partial",
             expires_at=timezone.now() + timedelta(days=1),
         )
         event = FunnelEvent.record(FunnelEvent.Type.OPPORTUNITY_CREATED, user=user, opportunity=opportunity)

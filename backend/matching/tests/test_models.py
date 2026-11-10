@@ -8,7 +8,7 @@ from django.utils import timezone
 from accounts.models import User
 from opportunities.models import Opportunity
 
-from .models import MatchResult
+from ..models import MatchResult
 
 
 class MatchResultTests(TestCase):
@@ -21,7 +21,7 @@ class MatchResultTests(TestCase):
             title="t",
             description="d",
             opportunity_type="other",
-            commitment="light",
+            commitment="partial",
             expires_at=timezone.now() + timedelta(days=3),
         )
         self.batch = uuid.uuid4()

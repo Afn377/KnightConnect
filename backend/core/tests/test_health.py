@@ -2,7 +2,7 @@ from django.core.exceptions import ValidationError
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
-from .validators import validate_availability_slots
+from ..validators import validate_availability_slots
 
 
 class HealthCheckTests(TestCase):
