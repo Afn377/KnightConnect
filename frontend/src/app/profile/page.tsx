@@ -1,6 +1,7 @@
 
 "use client";
 
+import Link from "next/link";
 import { useState, type ReactNode } from "react";
 
 type MatchingContext = {
@@ -55,13 +56,19 @@ function InfoBox({
 }) {
   return (
     <div className="rounded-lg bg-gray-50 p-4">
-      <h3 className="mb-3 text-sm font-semibold">{title}</h3>
+      <h3 className="mb-3 text-sm font-semibold">
+        {title}
+      </h3>
       <Tags items={items} />
     </div>
   );
 }
 
-function EditButton({ onClick }: { onClick: () => void }) {
+function EditButton({
+  onClick,
+}: {
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
@@ -118,7 +125,9 @@ function Modal({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
       }}
     >
       <div
@@ -128,7 +137,10 @@ function Modal({
         className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-xl"
       >
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-xl font-bold">{title}</h2>
+          <h2 className="text-xl font-bold">
+            {title}
+          </h2>
+
           <button
             type="button"
             onClick={onClose}
@@ -220,7 +232,9 @@ export default function ProfilePage() {
   }
 
   function saveProfile() {
-    if (!draftName.trim() || !draftMajor.trim()) return;
+    if (!draftName.trim() || !draftMajor.trim()) {
+      return;
+    }
 
     setName(draftName.trim());
     setMajor(draftMajor.trim());
@@ -290,37 +304,57 @@ export default function ProfilePage() {
 
   return (
     <main className="min-h-screen bg-[#FAFAFA] text-gray-900">
+      {/* Rutgers scarlet top border */}
       <div className="h-1 bg-[#CC0033]" />
 
       <div className="mx-auto max-w-5xl px-5 py-8 sm:px-8">
         {/* Navigation */}
         <nav className="mb-10 flex flex-wrap items-center justify-between gap-5 border-b border-gray-200 pb-5">
-          <div className="flex items-center gap-3">
+          {/* Clickable logo returns to homepage */}
+          <Link
+            href="/"
+            className="flex items-center gap-3"
+          >
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#CC0033] text-lg font-bold text-white">
               K
             </div>
 
-            <h1 className="text-xl font-bold">
+            <span className="text-xl font-bold">
               Knight
-              <span className="text-[#CC0033]">Connect</span>
-            </h1>
-          </div>
+              <span className="text-[#CC0033]">
+                Connect
+              </span>
+            </span>
+          </Link>
 
           <div className="flex flex-wrap items-center gap-6 text-sm font-medium text-gray-600">
             <span>Opportunity</span>
             <span>Post</span>
-            <span>Requests</span>
-            <span className="border-b-2 border-[#CC0033] pb-1 font-semibold text-[#CC0033]">
+
+            {/* Clickable Requests link */}
+            <Link
+              href="/requests"
+              className="transition hover:text-[#CC0033]"
+            >
+              Requests
+            </Link>
+
+            {/* Current page */}
+            <Link
+              href="/profile"
+              aria-current="page"
+              className="border-b-2 border-[#CC0033] pb-1 font-semibold text-[#CC0033]"
+            >
               Profile
-            </span>
+            </Link>
           </div>
         </nav>
 
         {/* Page Heading */}
         <div className="mb-7">
-          <h2 className="text-3xl font-bold">
+          <h1 className="text-3xl font-bold">
             Your Profile
-          </h2>
+          </h1>
 
           <p className="mt-2 text-sm text-gray-500">
             Review the information KnightConnect uses to
@@ -337,10 +371,14 @@ export default function ProfilePage() {
               </div>
 
               <div>
-                <h3 className="text-lg font-bold">{name}</h3>
+                <h2 className="text-lg font-bold">
+                  {name}
+                </h2>
+
                 <p className="mt-1 text-sm text-gray-500">
                   {major} · {year}
                 </p>
+
                 <span className="mt-2 inline-block rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
                   ✓ Verified Student
                 </span>
@@ -353,9 +391,9 @@ export default function ProfilePage() {
 
         {/* Matching Context */}
         <section className="mb-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-bold">
+          <h2 className="text-lg font-bold">
             Matching Context
-          </h3>
+          </h2>
 
           <p className="mb-6 mt-1 text-sm text-gray-500">
             This information is visible to potential
@@ -364,7 +402,10 @@ export default function ProfilePage() {
           </p>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <InfoBox title="Skills" items={matching.skills} />
+            <InfoBox
+              title="Skills"
+              items={matching.skills}
+            />
 
             <InfoBox
               title="Roles I Can Contribute To"
@@ -387,7 +428,9 @@ export default function ProfilePage() {
               </h3>
 
               <p className="text-sm font-medium">
-                <span className="mr-2 text-[#CC0033]">●</span>
+                <span className="mr-2 text-[#CC0033]">
+                  ●
+                </span>
                 {matching.availability}
               </p>
 
@@ -405,9 +448,9 @@ export default function ProfilePage() {
 
         {/* Contact Details */}
         <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-bold">
+          <h2 className="text-lg font-bold">
             Contact Details
-          </h3>
+          </h2>
 
           <p className="mb-6 mt-1 text-sm text-gray-500">
             These details stay private until a connection
@@ -430,6 +473,7 @@ export default function ProfilePage() {
                 <p className="mb-2 text-xs text-gray-500">
                   {label}
                 </p>
+
                 <p className="break-all text-sm font-semibold">
                   {value}
                 </p>
@@ -498,7 +542,9 @@ export default function ProfilePage() {
                 "Senior",
                 "Graduate",
               ].map((option) => (
-                <option key={option}>{option}</option>
+                <option key={option}>
+                  {option}
+                </option>
               ))}
             </select>
           </label>
@@ -634,7 +680,10 @@ export default function ProfilePage() {
           />
 
           {contactError && (
-            <p role="alert" className="text-sm font-medium text-red-600">
+            <p
+              role="alert"
+              className="text-sm font-medium text-red-600"
+            >
               {contactError}
             </p>
           )}
@@ -643,6 +692,7 @@ export default function ProfilePage() {
             <p className="text-sm font-semibold text-[#A00028]">
               🔒 Privacy Reminder
             </p>
+
             <p className="mt-1 text-xs text-gray-600">
               Contact details should only be shared with
               another student after a connection is approved.
