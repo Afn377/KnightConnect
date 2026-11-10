@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 
 from core.throttles import ScopedRateThrottle
 
+from .pilot import pilot_metrics
 from .reports import funnel_counts
 from .serializers import TrackEventSerializer
 
@@ -46,3 +47,16 @@ class FunnelReportView(APIView):
         if start and end and start > end:
             raise ValidationError({"end": ["End must not be before start."]})
         return Response({"start": start, "end": end, "funnel": funnel_counts(start, end)})
+
+
+class PilotMetricsView(FunnelReportView):
+    """Staff-only pilot success measures: qualified-match rate and useful-connection rate.
+
+    Takes the same optional ``start`` and ``end`` as the funnel report.
+    """
+
+    def get(self, request):
+        start, end = self._date("start"), self._date("end")
+        if start and end and start > end:
+            raise ValidationError({"end": ["End must not be before start."]})
+        return Response({"start": start, "end": end, "pilot": pilot_metrics(start, end)})
