@@ -6,6 +6,7 @@
 | --- | --- | --- |
 | Han Wang | @doublehan2023 | |
 | Soraya Mosavi | SorayaM0 | |
+| Rushil Pandya | rushil1356 |  |
 | S M Afnan Haider | Afn377 | Backend |
 
 ## Backend
