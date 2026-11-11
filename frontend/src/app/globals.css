@@ -3,6 +3,13 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --color-page: #fafafa;
+  --color-scarlet: #cc0033;
+  --color-scarlet-dark: #a00028;
+  --color-scarlet-soft: #fce7ec;
+  --color-scarlet-border: #f4c6d1;
+  --color-scarlet-surface: #fff5f7;
+  --color-nav-icon: #374957;
 }
 
 @theme inline {
